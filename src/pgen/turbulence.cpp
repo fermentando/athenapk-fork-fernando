@@ -441,7 +441,7 @@ void Perturb(MeshData<Real> *md, const Real dt) {
 //----------------------------------------------------------------------------------------
 //! \fn void FewModesTurbulenceDriver::Driving(void)
 //  \brief Generate and Perturb the velocity field
-
+\
 void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
   // evolve forcing
   Generate(md, dt);

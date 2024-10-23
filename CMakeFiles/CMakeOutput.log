@@ -1,0 +1,474 @@
+The system is: Linux - 5.3.18-150300.59.54-default - x86_64
+Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+Compiler: /u/ferhi/AthenaPK/athenapk/external/Kokkos/bin/nvcc_wrapper 
+Build flags: 
+Id flags:  
+
+The output was:
+0
+
+
+Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "a.out"
+
+The CXX compiler identification is GNU, found in "/u/ferhi/AthenaPK/athenapk/CMakeFiles/3.17.0/CompilerIdCXX/a.out"
+
+Determining if the CXX compiler works passed with the following output:
+Change Dir: /u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake cmTC_81e42/fast && /usr/bin/gmake -f CMakeFiles/cmTC_81e42.dir/build.make CMakeFiles/cmTC_81e42.dir/build
+gmake[1]: Entering directory '/freya/u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_81e42.dir/testCXXCompiler.cxx.o
+/u/ferhi/AthenaPK/athenapk/external/Kokkos/bin/nvcc_wrapper     -o CMakeFiles/cmTC_81e42.dir/testCXXCompiler.cxx.o -c /u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp/testCXXCompiler.cxx
+Linking CXX executable cmTC_81e42
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_81e42.dir/link.txt --verbose=1
+/u/ferhi/AthenaPK/athenapk/external/Kokkos/bin/nvcc_wrapper       CMakeFiles/cmTC_81e42.dir/testCXXCompiler.cxx.o  -o cmTC_81e42 
+gmake[1]: Leaving directory '/freya/u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp'
+
+
+
+Detecting CXX compiler ABI info compiled with the following output:
+Change Dir: /u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp
+
+Run Build Command(s):/usr/bin/gmake cmTC_4150c/fast && /usr/bin/gmake -f CMakeFiles/cmTC_4150c.dir/build.make CMakeFiles/cmTC_4150c.dir/build
+gmake[1]: Entering directory '/freya/u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp'
+Building CXX object CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o
+/u/ferhi/AthenaPK/athenapk/external/Kokkos/bin/nvcc_wrapper    -v -o CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o -c /usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp
+Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs
+COLLECT_GCC=g++
+Target: x86_64-pc-linux-gnu
+Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran
+Thread model: posix
+Supported LTO compression algorithms: zlib
+gcc version 10.3.0 (GCC) 
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-E' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-D' '__CUDACC__' '-D' '__NVCC__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-include' 'cuda_runtime.h' '-m64' '-o' '/tmp/tmpxft_000024c8_00000000-7_CMakeCXXCompilerABI.cpp1.ii' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/cc1plus -E -quiet -v -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include -iprefix /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/ -D_GNU_SOURCE -D __CUDA_ARCH__=700 -D __CUDA_ARCH_LIST__=700 -D CUDA_DOUBLE_MATH_FUNCTIONS -D __CUDACC__ -D __NVCC__ -D __CUDACC_VER_MAJOR__=11 -D __CUDACC_VER_MINOR__=6 -D __CUDACC_VER_BUILD__=124 -D __CUDA_API_VER_MAJOR__=11 -D __CUDA_API_VER_MINOR__=6 -D __NVCC_DIAG_PRAGMA_SUPPORT__=1 -include cuda_runtime.h /usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp -o /tmp/tmpxft_000024c8_00000000-7_CMakeCXXCompilerABI.cpp1.ii -m64 -mtune=generic -march=x86-64
+ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed"
+ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"
+#include "..." search starts here:
+#include <...> search starts here:
+ /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed
+ /usr/local/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include
+ /usr/include
+End of search list.
+COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/
+LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-E' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-D' '__CUDACC__' '-D' '__NVCC__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-include' 'cuda_runtime.h' '-m64' '-o' '/tmp/tmpxft_000024c8_00000000-7_CMakeCXXCompilerABI.cpp1.ii' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs
+COLLECT_GCC=g++
+Target: x86_64-pc-linux-gnu
+Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran
+Thread model: posix
+Supported LTO compression algorithms: zlib
+gcc version 10.3.0 (GCC) 
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-E' '-D' '__CUDACC__' '-D' '__NVCC__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-include' 'cuda_runtime.h' '-m64' '-o' '/tmp/tmpxft_000024c8_00000000-5_CMakeCXXCompilerABI.cpp4.ii' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/cc1plus -E -quiet -v -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include -iprefix /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/ -D_GNU_SOURCE -D __CUDA_ARCH_LIST__=700 -D __CUDACC__ -D __NVCC__ -D __CUDACC_VER_MAJOR__=11 -D __CUDACC_VER_MINOR__=6 -D __CUDACC_VER_BUILD__=124 -D __CUDA_API_VER_MAJOR__=11 -D __CUDA_API_VER_MINOR__=6 -D __NVCC_DIAG_PRAGMA_SUPPORT__=1 -include cuda_runtime.h /usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp -o /tmp/tmpxft_000024c8_00000000-5_CMakeCXXCompilerABI.cpp4.ii -m64 -mtune=generic -march=x86-64
+ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed"
+ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"
+#include "..." search starts here:
+#include <...> search starts here:
+ /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed
+ /usr/local/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include
+ /usr/include
+End of search list.
+COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/
+LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-E' '-D' '__CUDACC__' '-D' '__NVCC__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-include' 'cuda_runtime.h' '-m64' '-o' '/tmp/tmpxft_000024c8_00000000-5_CMakeCXXCompilerABI.cpp4.ii' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs
+COLLECT_GCC=g++
+Target: x86_64-pc-linux-gnu
+Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran
+Thread model: posix
+Supported LTO compression algorithms: zlib
+gcc version 10.3.0 (GCC) 
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-m64' '-o' 'CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/cc1plus -quiet -v -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include -iprefix /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/ -D_GNU_SOURCE -D __CUDA_ARCH__=700 -D __CUDA_ARCH_LIST__=700 -D CUDA_DOUBLE_MATH_FUNCTIONS /tmp/tmpxft_000024c8_00000000-6_CMakeCXXCompilerABI.cudafe1.cpp -quiet -dumpbase tmpxft_000024c8_00000000-6_CMakeCXXCompilerABI.cudafe1.cpp -m64 -mtune=generic -march=x86-64 -auxbase-strip CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o -version -o /tmp/cctIPDUC.s
+GNU C++14 (GCC) version 10.3.0 (x86_64-pc-linux-gnu)
+	compiled by GNU C version 10.3.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.16.1-GMP
+
+warning: MPFR header version 4.0.1 differs from library version 4.0.2-p6.
+GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed"
+ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"
+#include "..." search starts here:
+#include <...> search starts here:
+ /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed
+ /usr/local/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include
+ /usr/include
+End of search list.
+GNU C++14 (GCC) version 10.3.0 (x86_64-pc-linux-gnu)
+	compiled by GNU C version 10.3.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.16.1-GMP
+
+warning: MPFR header version 4.0.1 differs from library version 4.0.2-p6.
+GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+Compiler executable checksum: 0b4017bc47589b0997742bd72258c5e5
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-m64' '-o' 'CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ as -v -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include --64 -o CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o /tmp/cctIPDUC.s
+GNU assembler version 2.37 (x86_64-suse-linux) using BFD version (GNU Binutils; SUSE Linux Enterprise 15) 2.37.20211103-7.26
+COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/
+LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-m64' '-o' 'CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+Linking CXX executable cmTC_4150c
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_4150c.dir/link.txt --verbose=1
+/u/ferhi/AthenaPK/athenapk/external/Kokkos/bin/nvcc_wrapper      -v CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o  -o cmTC_4150c 
+Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs
+COLLECT_GCC=g++
+Target: x86_64-pc-linux-gnu
+Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran
+Thread model: posix
+Supported LTO compression algorithms: zlib
+gcc version 10.3.0 (GCC) 
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'FATBINFILE="/tmp/tmpxft_000024f1_00000000-4_cmTC_4150c_dlink.fatbin.c"' '-D' 'REGISTERLINKBINARYFILE="/tmp/tmpxft_000024f1_00000000-3_cmTC_4150c_dlink.reg.c"' '-I' '.' '-D' '__NV_EXTRA_INITIALIZATION=' '-D' '__NV_EXTRA_FINALIZATION=' '-D' '__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-m64' '-o' '/tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/cc1plus -quiet -v -I . -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include -iprefix /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/ -D_GNU_SOURCE -D __CUDA_ARCH_LIST__=700 -D FATBINFILE="/tmp/tmpxft_000024f1_00000000-4_cmTC_4150c_dlink.fatbin.c" -D REGISTERLINKBINARYFILE="/tmp/tmpxft_000024f1_00000000-3_cmTC_4150c_dlink.reg.c" -D __NV_EXTRA_INITIALIZATION= -D __NV_EXTRA_FINALIZATION= -D __CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__ -D __CUDACC_VER_MAJOR__=11 -D __CUDACC_VER_MINOR__=6 -D __CUDACC_VER_BUILD__=124 -D __CUDA_API_VER_MAJOR__=11 -D __CUDA_API_VER_MINOR__=6 -D __NVCC_DIAG_PRAGMA_SUPPORT__=1 /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/crt/link.stub -quiet -dumpbase link.stub -m64 -mtune=generic -march=x86-64 -auxbase-strip /tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o -version -o /tmp/ccQhcBvv.s
+GNU C++14 (GCC) version 10.3.0 (x86_64-pc-linux-gnu)
+	compiled by GNU C version 10.3.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.16.1-GMP
+
+warning: MPFR header version 4.0.1 differs from library version 4.0.2-p6.
+GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include"
+ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed"
+ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"
+#include "..." search starts here:
+#include <...> search starts here:
+ .
+ /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed
+ /usr/local/include
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include
+ /usr/include
+End of search list.
+GNU C++14 (GCC) version 10.3.0 (x86_64-pc-linux-gnu)
+	compiled by GNU C version 10.3.0, GMP version 6.1.2, MPFR version 4.0.1, MPC version 1.1.0, isl version isl-0.16.1-GMP
+
+warning: MPFR header version 4.0.1 differs from library version 4.0.2-p6.
+GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+Compiler executable checksum: 0b4017bc47589b0997742bd72258c5e5
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'FATBINFILE="/tmp/tmpxft_000024f1_00000000-4_cmTC_4150c_dlink.fatbin.c"' '-D' 'REGISTERLINKBINARYFILE="/tmp/tmpxft_000024f1_00000000-3_cmTC_4150c_dlink.reg.c"' '-I' '.' '-D' '__NV_EXTRA_INITIALIZATION=' '-D' '__NV_EXTRA_FINALIZATION=' '-D' '__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-m64' '-o' '/tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ as -v -I . -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include --64 -o /tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o /tmp/ccQhcBvv.s
+GNU assembler version 2.37 (x86_64-suse-linux) using BFD version (GNU Binutils; SUSE Linux Enterprise 15) 2.37.20211103-7.26
+COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/
+LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'FATBINFILE="/tmp/tmpxft_000024f1_00000000-4_cmTC_4150c_dlink.fatbin.c"' '-D' 'REGISTERLINKBINARYFILE="/tmp/tmpxft_000024f1_00000000-3_cmTC_4150c_dlink.reg.c"' '-I' '.' '-D' '__NV_EXTRA_INITIALIZATION=' '-D' '__NV_EXTRA_FINALIZATION=' '-D' '__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-m64' '-o' '/tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs
+COLLECT_GCC=g++
+COLLECT_LTO_WRAPPER=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/lto-wrapper
+Target: x86_64-pc-linux-gnu
+Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran
+Thread model: posix
+Supported LTO compression algorithms: zlib
+gcc version 10.3.0 (GCC) 
+COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/
+LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-v' '-m64' '-L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib/stubs' '-L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib' '-o' 'cmTC_4150c' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/collect2 -plugin /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/liblto_plugin.so -plugin-opt=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/lto-wrapper -plugin-opt=-fresolution=/tmp/ccWuBEtb.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --build-id --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_4150c /usr/lib/../lib64/crt1.o /usr/lib/../lib64/crti.o /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/crtbegin.o -L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib/stubs -L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib -L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0 -L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc -L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../.. --start-group /tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o -rpath /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib -lcudadevrt -lcudart_static -lrt -lpthread -ldl --end-group -lstdc++ -lm -lgcc_s -lgcc -lc -rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -lgcc_s -lgcc /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/crtend.o /usr/lib/../lib64/crtn.o
+COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-v' '-m64' '-L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib/stubs' '-L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib' '-o' 'cmTC_4150c' '-shared-libgcc' '-mtune=generic' '-march=x86-64'
+gmake[1]: Leaving directory '/freya/u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp'
+
+
+
+Parsed CXX implicit include dir info from above output: rv=done
+  found start of include info
+  found start of implicit include info
+    add: [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include]
+    add: [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0]
+    add: [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu]
+    add: [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward]
+    add: [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include]
+    add: [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed]
+    add: [/usr/local/include]
+    add: [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include]
+    add: [/usr/include]
+  end of search list found
+  collapse include dir [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include] ==> [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/targets/x86_64-linux/include]
+  collapse include dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/include/c++/10.3.0]
+  collapse include dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/include/c++/10.3.0/x86_64-pc-linux-gnu]
+  collapse include dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/include/c++/10.3.0/backward]
+  collapse include dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib/gcc/x86_64-pc-linux-gnu/10.3.0/include]
+  collapse include dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed]
+  collapse include dir [/usr/local/include] ==> [/usr/local/include]
+  collapse include dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/include]
+  collapse include dir [/usr/include] ==> [/usr/include]
+  implicit include dirs: [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/targets/x86_64-linux/include;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/include/c++/10.3.0;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/include/c++/10.3.0/x86_64-pc-linux-gnu;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/include/c++/10.3.0/backward;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib/gcc/x86_64-pc-linux-gnu/10.3.0/include;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed;/usr/local/include;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/include;/usr/include]
+
+
+Parsed CXX implicit link information from above output:
+  link line regex: [^( *|.*[/\])(ld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\]+-)?ld|collect2)[^/\]*( |$)]
+  ignore line: [Change Dir: /u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp]
+  ignore line: []
+  ignore line: [Run Build Command(s):/usr/bin/gmake cmTC_4150c/fast && /usr/bin/gmake -f CMakeFiles/cmTC_4150c.dir/build.make CMakeFiles/cmTC_4150c.dir/build]
+  ignore line: [gmake[1]: Entering directory '/freya/u/ferhi/AthenaPK/athenapk/CMakeFiles/CMakeTmp']
+  ignore line: [Building CXX object CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o]
+  ignore line: [/u/ferhi/AthenaPK/athenapk/external/Kokkos/bin/nvcc_wrapper    -v -o CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o -c /usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp]
+  ignore line: [Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs]
+  ignore line: [COLLECT_GCC=g++]
+  ignore line: [Target: x86_64-pc-linux-gnu]
+  ignore line: [Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran]
+  ignore line: [Thread model: posix]
+  ignore line: [Supported LTO compression algorithms: zlib]
+  ignore line: [gcc version 10.3.0 (GCC) ]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-E' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-D' '__CUDACC__' '-D' '__NVCC__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-include' 'cuda_runtime.h' '-m64' '-o' '/tmp/tmpxft_000024c8_00000000-7_CMakeCXXCompilerABI.cpp1.ii' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/cc1plus -E -quiet -v -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include -iprefix /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/ -D_GNU_SOURCE -D __CUDA_ARCH__=700 -D __CUDA_ARCH_LIST__=700 -D CUDA_DOUBLE_MATH_FUNCTIONS -D __CUDACC__ -D __NVCC__ -D __CUDACC_VER_MAJOR__=11 -D __CUDACC_VER_MINOR__=6 -D __CUDACC_VER_BUILD__=124 -D __CUDA_API_VER_MAJOR__=11 -D __CUDA_API_VER_MINOR__=6 -D __NVCC_DIAG_PRAGMA_SUPPORT__=1 -include cuda_runtime.h /usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp -o /tmp/tmpxft_000024c8_00000000-7_CMakeCXXCompilerABI.cpp1.ii -m64 -mtune=generic -march=x86-64]
+  ignore line: [ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed"]
+  ignore line: [ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"]
+  ignore line: [#include "..." search starts here:]
+  ignore line: [#include <...> search starts here:]
+  ignore line: [ /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed]
+  ignore line: [ /usr/local/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include]
+  ignore line: [ /usr/include]
+  ignore line: [End of search list.]
+  ignore line: [COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/]
+  ignore line: [LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-E' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-D' '__CUDACC__' '-D' '__NVCC__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-include' 'cuda_runtime.h' '-m64' '-o' '/tmp/tmpxft_000024c8_00000000-7_CMakeCXXCompilerABI.cpp1.ii' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs]
+  ignore line: [COLLECT_GCC=g++]
+  ignore line: [Target: x86_64-pc-linux-gnu]
+  ignore line: [Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran]
+  ignore line: [Thread model: posix]
+  ignore line: [Supported LTO compression algorithms: zlib]
+  ignore line: [gcc version 10.3.0 (GCC) ]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-E' '-D' '__CUDACC__' '-D' '__NVCC__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-include' 'cuda_runtime.h' '-m64' '-o' '/tmp/tmpxft_000024c8_00000000-5_CMakeCXXCompilerABI.cpp4.ii' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/cc1plus -E -quiet -v -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include -iprefix /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/ -D_GNU_SOURCE -D __CUDA_ARCH_LIST__=700 -D __CUDACC__ -D __NVCC__ -D __CUDACC_VER_MAJOR__=11 -D __CUDACC_VER_MINOR__=6 -D __CUDACC_VER_BUILD__=124 -D __CUDA_API_VER_MAJOR__=11 -D __CUDA_API_VER_MINOR__=6 -D __NVCC_DIAG_PRAGMA_SUPPORT__=1 -include cuda_runtime.h /usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp -o /tmp/tmpxft_000024c8_00000000-5_CMakeCXXCompilerABI.cpp4.ii -m64 -mtune=generic -march=x86-64]
+  ignore line: [ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed"]
+  ignore line: [ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"]
+  ignore line: [#include "..." search starts here:]
+  ignore line: [#include <...> search starts here:]
+  ignore line: [ /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed]
+  ignore line: [ /usr/local/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include]
+  ignore line: [ /usr/include]
+  ignore line: [End of search list.]
+  ignore line: [COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/]
+  ignore line: [LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-E' '-D' '__CUDACC__' '-D' '__NVCC__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-include' 'cuda_runtime.h' '-m64' '-o' '/tmp/tmpxft_000024c8_00000000-5_CMakeCXXCompilerABI.cpp4.ii' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs]
+  ignore line: [COLLECT_GCC=g++]
+  ignore line: [Target: x86_64-pc-linux-gnu]
+  ignore line: [Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran]
+  ignore line: [Thread model: posix]
+  ignore line: [Supported LTO compression algorithms: zlib]
+  ignore line: [gcc version 10.3.0 (GCC) ]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-m64' '-o' 'CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/cc1plus -quiet -v -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include -iprefix /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/ -D_GNU_SOURCE -D __CUDA_ARCH__=700 -D __CUDA_ARCH_LIST__=700 -D CUDA_DOUBLE_MATH_FUNCTIONS /tmp/tmpxft_000024c8_00000000-6_CMakeCXXCompilerABI.cudafe1.cpp -quiet -dumpbase tmpxft_000024c8_00000000-6_CMakeCXXCompilerABI.cudafe1.cpp -m64 -mtune=generic -march=x86-64 -auxbase-strip CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o -version -o /tmp/cctIPDUC.s]
+  ignore line: [GNU C++14 (GCC) version 10.3.0 (x86_64-pc-linux-gnu)]
+  ignore line: [	compiled by GNU C version 10.3.0  GMP version 6.1.2  MPFR version 4.0.1  MPC version 1.1.0  isl version isl-0.16.1-GMP]
+  ignore line: []
+  ignore line: [warning: MPFR header version 4.0.1 differs from library version 4.0.2-p6.]
+  ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+  ignore line: [ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed"]
+  ignore line: [ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"]
+  ignore line: [#include "..." search starts here:]
+  ignore line: [#include <...> search starts here:]
+  ignore line: [ /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed]
+  ignore line: [ /usr/local/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include]
+  ignore line: [ /usr/include]
+  ignore line: [End of search list.]
+  ignore line: [GNU C++14 (GCC) version 10.3.0 (x86_64-pc-linux-gnu)]
+  ignore line: [	compiled by GNU C version 10.3.0  GMP version 6.1.2  MPFR version 4.0.1  MPC version 1.1.0  isl version isl-0.16.1-GMP]
+  ignore line: []
+  ignore line: [warning: MPFR header version 4.0.1 differs from library version 4.0.2-p6.]
+  ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+  ignore line: [Compiler executable checksum: 0b4017bc47589b0997742bd72258c5e5]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-m64' '-o' 'CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [ as -v -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include --64 -o CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o /tmp/cctIPDUC.s]
+  ignore line: [GNU assembler version 2.37 (x86_64-suse-linux) using BFD version (GNU Binutils]
+  ignore line: [ SUSE Linux Enterprise 15) 2.37.20211103-7.26]
+  ignore line: [COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/]
+  ignore line: [LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH__=700' '-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'CUDA_DOUBLE_MATH_FUNCTIONS' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-m64' '-o' 'CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [Linking CXX executable cmTC_4150c]
+  ignore line: [/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTC_4150c.dir/link.txt --verbose=1]
+  ignore line: [/u/ferhi/AthenaPK/athenapk/external/Kokkos/bin/nvcc_wrapper      -v CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o  -o cmTC_4150c ]
+  ignore line: [Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs]
+  ignore line: [COLLECT_GCC=g++]
+  ignore line: [Target: x86_64-pc-linux-gnu]
+  ignore line: [Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran]
+  ignore line: [Thread model: posix]
+  ignore line: [Supported LTO compression algorithms: zlib]
+  ignore line: [gcc version 10.3.0 (GCC) ]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'FATBINFILE="/tmp/tmpxft_000024f1_00000000-4_cmTC_4150c_dlink.fatbin.c"' '-D' 'REGISTERLINKBINARYFILE="/tmp/tmpxft_000024f1_00000000-3_cmTC_4150c_dlink.reg.c"' '-I' '.' '-D' '__NV_EXTRA_INITIALIZATION=' '-D' '__NV_EXTRA_FINALIZATION=' '-D' '__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-m64' '-o' '/tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/cc1plus -quiet -v -I . -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include -iprefix /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/ -D_GNU_SOURCE -D __CUDA_ARCH_LIST__=700 -D FATBINFILE="/tmp/tmpxft_000024f1_00000000-4_cmTC_4150c_dlink.fatbin.c" -D REGISTERLINKBINARYFILE="/tmp/tmpxft_000024f1_00000000-3_cmTC_4150c_dlink.reg.c" -D __NV_EXTRA_INITIALIZATION= -D __NV_EXTRA_FINALIZATION= -D __CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__ -D __CUDACC_VER_MAJOR__=11 -D __CUDACC_VER_MINOR__=6 -D __CUDACC_VER_BUILD__=124 -D __CUDA_API_VER_MAJOR__=11 -D __CUDA_API_VER_MINOR__=6 -D __NVCC_DIAG_PRAGMA_SUPPORT__=1 /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/crt/link.stub -quiet -dumpbase link.stub -m64 -mtune=generic -march=x86-64 -auxbase-strip /tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o -version -o /tmp/ccQhcBvv.s]
+  ignore line: [GNU C++14 (GCC) version 10.3.0 (x86_64-pc-linux-gnu)]
+  ignore line: [	compiled by GNU C version 10.3.0  GMP version 6.1.2  MPFR version 4.0.1  MPC version 1.1.0  isl version isl-0.16.1-GMP]
+  ignore line: []
+  ignore line: [warning: MPFR header version 4.0.1 differs from library version 4.0.2-p6.]
+  ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+  ignore line: [ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include"]
+  ignore line: [ignoring duplicate directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed"]
+  ignore line: [ignoring nonexistent directory "/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../x86_64-pc-linux-gnu/include"]
+  ignore line: [#include "..." search starts here:]
+  ignore line: [#include <...> search starts here:]
+  ignore line: [ .]
+  ignore line: [ /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/x86_64-pc-linux-gnu]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../include/c++/10.3.0/backward]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/include-fixed]
+  ignore line: [ /usr/local/include]
+  ignore line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/../../include]
+  ignore line: [ /usr/include]
+  ignore line: [End of search list.]
+  ignore line: [GNU C++14 (GCC) version 10.3.0 (x86_64-pc-linux-gnu)]
+  ignore line: [	compiled by GNU C version 10.3.0  GMP version 6.1.2  MPFR version 4.0.1  MPC version 1.1.0  isl version isl-0.16.1-GMP]
+  ignore line: []
+  ignore line: [warning: MPFR header version 4.0.1 differs from library version 4.0.2-p6.]
+  ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+  ignore line: [Compiler executable checksum: 0b4017bc47589b0997742bd72258c5e5]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'FATBINFILE="/tmp/tmpxft_000024f1_00000000-4_cmTC_4150c_dlink.fatbin.c"' '-D' 'REGISTERLINKBINARYFILE="/tmp/tmpxft_000024f1_00000000-3_cmTC_4150c_dlink.reg.c"' '-I' '.' '-D' '__NV_EXTRA_INITIALIZATION=' '-D' '__NV_EXTRA_FINALIZATION=' '-D' '__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-m64' '-o' '/tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [ as -v -I . -I /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include --64 -o /tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o /tmp/ccQhcBvv.s]
+  ignore line: [GNU assembler version 2.37 (x86_64-suse-linux) using BFD version (GNU Binutils]
+  ignore line: [ SUSE Linux Enterprise 15) 2.37.20211103-7.26]
+  ignore line: [COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/]
+  ignore line: [LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-c' '-D' 'FATBINFILE="/tmp/tmpxft_000024f1_00000000-4_cmTC_4150c_dlink.fatbin.c"' '-D' 'REGISTERLINKBINARYFILE="/tmp/tmpxft_000024f1_00000000-3_cmTC_4150c_dlink.reg.c"' '-I' '.' '-D' '__NV_EXTRA_INITIALIZATION=' '-D' '__NV_EXTRA_FINALIZATION=' '-D' '__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__' '-v' '-I' '/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/include' '-D' '__CUDACC_VER_MAJOR__=11' '-D' '__CUDACC_VER_MINOR__=6' '-D' '__CUDACC_VER_BUILD__=124' '-D' '__CUDA_API_VER_MAJOR__=11' '-D' '__CUDA_API_VER_MINOR__=6' '-D' '__NVCC_DIAG_PRAGMA_SUPPORT__=1' '-m64' '-o' '/tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  ignore line: [Reading specs from /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/specs]
+  ignore line: [COLLECT_GCC=g++]
+  ignore line: [COLLECT_LTO_WRAPPER=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/lto-wrapper]
+  ignore line: [Target: x86_64-pc-linux-gnu]
+  ignore line: [Configured with: ../gcc-10.3.0/configure LDFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' CFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' CXXFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' XCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' TCFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security' GCJFLAGS='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security ' --with-stage1-ldflags='-fmessage-length=0 -grecord-gcc-switches -O2 -D_FORTIFY_SOURCE=2 -funwind-tables -fasynchronous-unwind-tables -fstack-clash-protection -U_FORTIFY_SOURCE -fPIC -Wno-error=format-security -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -L/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib -Wl,-rpath=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1/lib' --prefix=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0 --disable-multilib --with-isl=/mpcdf/soft/SLE_15/packages/x86_64/isl/0.16.1 --enable-linker-build-id --enable-languages=c,c++,fortran]
+  ignore line: [Thread model: posix]
+  ignore line: [Supported LTO compression algorithms: zlib]
+  ignore line: [gcc version 10.3.0 (GCC) ]
+  ignore line: [COMPILER_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/]
+  ignore line: [LIBRARY_PATH=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64/:/lib/../lib64/:/usr/lib/../lib64/:/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../:/lib/:/usr/lib/]
+  ignore line: [COLLECT_GCC_OPTIONS='-D' '__CUDA_ARCH_LIST__=700' '-v' '-m64' '-L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib/stubs' '-L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib' '-o' 'cmTC_4150c' '-shared-libgcc' '-mtune=generic' '-march=x86-64']
+  link line: [ /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/collect2 -plugin /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/liblto_plugin.so -plugin-opt=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/lto-wrapper -plugin-opt=-fresolution=/tmp/ccWuBEtb.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --build-id --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -o cmTC_4150c /usr/lib/../lib64/crt1.o /usr/lib/../lib64/crti.o /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/crtbegin.o -L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib/stubs -L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib -L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0 -L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc -L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64 -L/lib/../lib64 -L/usr/lib/../lib64 -L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../.. --start-group /tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o -rpath /mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib -lcudadevrt -lcudart_static -lrt -lpthread -ldl --end-group -lstdc++ -lm -lgcc_s -lgcc -lc -rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64 -lgcc_s -lgcc /freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/crtend.o /usr/lib/../lib64/crtn.o]
+    arg [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/collect2] ==> ignore
+    arg [-plugin] ==> ignore
+    arg [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/liblto_plugin.so] ==> ignore
+    arg [-plugin-opt=/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../libexec/gcc/x86_64-pc-linux-gnu/10.3.0/lto-wrapper] ==> ignore
+    arg [-plugin-opt=-fresolution=/tmp/ccWuBEtb.res] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+    arg [-plugin-opt=-pass-through=-lc] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+    arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+    arg [--build-id] ==> ignore
+    arg [--eh-frame-hdr] ==> ignore
+    arg [-m] ==> ignore
+    arg [elf_x86_64] ==> ignore
+    arg [-dynamic-linker] ==> ignore
+    arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+    arg [-o] ==> ignore
+    arg [cmTC_4150c] ==> ignore
+    arg [/usr/lib/../lib64/crt1.o] ==> ignore
+    arg [/usr/lib/../lib64/crti.o] ==> ignore
+    arg [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/crtbegin.o] ==> ignore
+    arg [-L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib/stubs] ==> dir [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib/stubs]
+    arg [-L/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib] ==> dir [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib]
+    arg [-L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0] ==> dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0]
+    arg [-L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc] ==> dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc]
+    arg [-L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64] ==> dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64]
+    arg [-L/lib/../lib64] ==> dir [/lib/../lib64]
+    arg [-L/usr/lib/../lib64] ==> dir [/usr/lib/../lib64]
+    arg [-L/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../..] ==> dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../..]
+    arg [--start-group] ==> ignore
+    arg [/tmp/tmpxft_000024f1_00000000-6_cmTC_4150c_dlink.o] ==> ignore
+    arg [CMakeFiles/cmTC_4150c.dir/CMakeCXXCompilerABI.cpp.o] ==> ignore
+    arg [-rpath] ==> ignore
+    arg [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib] ==> ignore
+    arg [-lcudadevrt] ==> lib [cudadevrt]
+    arg [-lcudart_static] ==> lib [cudart_static]
+    arg [-lrt] ==> lib [rt]
+    arg [-lpthread] ==> lib [pthread]
+    arg [-ldl] ==> lib [dl]
+    arg [--end-group] ==> ignore
+    arg [-lstdc++] ==> lib [stdc++]
+    arg [-lm] ==> lib [m]
+    arg [-lgcc_s] ==> lib [gcc_s]
+    arg [-lgcc] ==> lib [gcc]
+    arg [-lc] ==> lib [c]
+    arg [-rpath=/mpcdf/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64] ==> ignore
+    arg [-lgcc_s] ==> lib [gcc_s]
+    arg [-lgcc] ==> lib [gcc]
+    arg [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/crtend.o] ==> ignore
+    arg [/usr/lib/../lib64/crtn.o] ==> ignore
+  collapse library dir [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib/stubs] ==> [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/targets/x86_64-linux/lib/stubs]
+  collapse library dir [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/bin/../targets/x86_64-linux/lib] ==> [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/targets/x86_64-linux/lib]
+  collapse library dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib/gcc/x86_64-pc-linux-gnu/10.3.0]
+  collapse library dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib/gcc]
+  collapse library dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../../../lib64] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64]
+  collapse library dir [/lib/../lib64] ==> [/lib64]
+  collapse library dir [/usr/lib/../lib64] ==> [/usr/lib64]
+  collapse library dir [/freya/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/bin/../lib/gcc/x86_64-pc-linux-gnu/10.3.0/../../..] ==> [/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib]
+  implicit libs: [cudadevrt;cudart_static;rt;pthread;dl;stdc++;m;gcc_s;gcc;c;gcc_s;gcc]
+  implicit dirs: [/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/targets/x86_64-linux/lib/stubs;/mpcdf/soft/SLE_15/packages/x86_64/cuda/11.6.2/targets/x86_64-linux/lib;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib/gcc/x86_64-pc-linux-gnu/10.3.0;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib/gcc;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib64;/lib64;/usr/lib64;/u/system/soft/SLE_15/packages/x86_64/gcc/10.3.0/lib]
+  implicit fwks: []
+
+

@@ -19,6 +19,7 @@
 #include "../eos/adiabatic_hydro.hpp"
 #include "../pgen/cluster/agn_triggering.hpp"
 #include "../pgen/cluster/magnetic_tower.hpp"
+#include "../pgen/fractal_ism.hpp"
 #include "diffusion/diffusion.hpp"
 #include "glmmhd/glmmhd.hpp"
 #include "hydro.hpp"
@@ -443,6 +444,55 @@ TaskCollection HydroDriver::MakeTaskCollection(BlockList_t &blocks, int stage) {
       pmb->meshblock_data.Add("u1", u0);
     }
   }
+// ---> beginning of new addition (frame boosting)
+
+  // Calculate frame boosting for cloud-crushing simulations
+  // TODO (fermentando) new mesh block u1 for flux calculation (Check original Athena++ docs)
+  if ((stage == 1) &&
+      hydro_pkg->AllParams().hasKey("frame_boosting") &&
+      hydro_pkg->Param<bool>("frame_boosting")) {
+
+    // need to make sure that there's only one region in order to MPI_reduce to work
+    TaskRegion &single_task_region = tc.AddRegion(1);
+    auto &tl = single_task_region[0];
+
+    // Analogously to AGN triggering, these tasks will be executed sequentially.
+    auto prev_task = none;
+
+    for (int i = 0; i < num_partitions; i++) {
+      auto &mu0 = pmesh->mesh_data.GetOrAdd("base", i);
+      auto prev_task =
+          tl.AddTask(prev_task, fractal_ism::compute_frame_v, mu0.get());
+    }
+#ifdef MPI_PARALLEL
+    auto reduce_agn_triggering =
+        tl.AddTask(prev_task, cluster::AGNTriggeringMPIReduceTriggering, hydro_pkg.get());
+    prev_task = reduce_agn_triggering;
+#endif
+
+    // Boost frame
+    for (int i = 0; i < num_partitions; i++) {
+      auto &mu0 = pmesh->mesh_data.GetOrAdd("base", i);
+      auto frame_boost =
+          tl.AddTask(prev_task, fractal_ism::apply_frame_boost, mu0.get());
+      prev_task = frame_boost;
+    }
+  }
+
+  for (int i = 0; i < blocks.size(); i++) {
+    auto &pmb = blocks[i];
+    // Using "base" as u0, which already exists (and returned by using plain Get())
+    auto &u0 = pmb->meshblock_data.Get();
+
+    // Create meshblock data for register u1.
+    // This is a noop if u1 already exists.
+    // TODO(pgrete) update to derive from other quanity as u1 does not require fluxes
+    if (stage == 1) {
+      pmb->meshblock_data.Add("u1", u0);
+    }
+  }
+
+// ----> end of addition (frame boost)
 
   // Calculate hyperbolic divergence cleaning speed
   // TODO(pgrete) Calculating mindx is only required after remeshing. Need to find a clean

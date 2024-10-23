@@ -260,6 +260,13 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   } else {
     PARTHENON_FAIL("AthenaPK hydro: Unknown fluid method.");
   }
+
+  // Add frame boosting for CC simulations
+  const bool frameboost_str = pin->GetOrAddBoolean("hydro", "frame_boost", false);
+  if (frameboost_str){
+    pkg->AddParam<Real>("inertial_frame_v", 0.);
+  }
+
   pkg->AddParam<>("fluid", fluid);
   pkg->AddParam<>("nhydro", nhydro);
   pkg->AddParam<>("calc_c_h", calc_c_h);
