@@ -25,6 +25,12 @@
 namespace fractal_ism {
 using namespace parthenon; 
 
+KOKKOS_INLINE_FUNCTION
+void Kokkos::Sum<Kokkos::pair<Real, Real>>::join(Kokkos::pair<Real, Real> &dst, const Kokkos::pair<Real, Real> &src) const {
+    dst.first += src.first;
+    dst.second += src.second;
+}
+
 // Compute frame_boosting velocity
 parthenon::TaskStatus
 compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
@@ -35,20 +41,22 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
 
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto nscalars = hydro_pkg->Param<int>("nscalars");
 
-  std::tuple<Real,Real> md_cold_gas{0.,0.};
+  const Real mean_molecular_mass_by_kb = mean_molecular_mass_ / units.k_boltzmann();
+  Kokkos::pair<Real,Real> md_cold_gas{0.,0.};
 
 
   parthenon::par_reduce(
       parthenon::loop_pattern_mdrange_tag, "fractal_ism::frame_boosting_velocity",
       parthenon::DevExecSpace(), 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
       ib.e,
-      KOKKOS_LAMBDA(const int &k, const int &j, const int &i, std::tuple<Real, Real>& local_cold_gas) {
+      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i, Kokkos::pair<Real, Real>& local_cold_gas) {
         auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
@@ -63,15 +71,15 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
             const Real cold_v3 = pow(cons(IM3, k, j, i), 2);
             const Real cold_v2 = pow(cons(IM2, k, j, i), 2);
             const Real cold_v1 = pow(cons(IM1, k, j, i), 2);
-            const Real cold_gas_speed = std::sqrt(v1 + v2 + v3);
+            const Real cold_gas_speed = std::sqrt(cold_v1 + cold_v2 + cold_v3);
 
-            std::get<0>(local_cold_gas) += cell_cold_mass * cold_gas_speed;
-            std::get<1>(local_cold_gas) += cell_cold_mass;
+            local_cold_gas.first += cell_cold_mass * cold_gas_speed;
+            local_cold_gas.second += cell_cold_mass;
 
           }
         }
       },
-      md_cold_gas); //parthenon_output
+      Kokkos::Sum<Kokkos::pair<Real, Real>>(md_cold_gas)); //parthenon_output
 
     Real frame_v =std::get<0>(md_cold_gas) / std::get<1>(md_cold_gas);
     if (frame_v != 0.) hydro_pkg->UpdateParam("fractal_ism::inertial_frame_v", frame_v); 

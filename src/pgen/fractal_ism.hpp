@@ -10,7 +10,7 @@
 #include <parthenon/package.hpp>
 
 // AthenaPK headers
-#include "../../units.hpp"
+#include "../units.hpp"
 #include "utils/error_checking.hpp"
 
 namespace fractal_ism {

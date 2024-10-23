@@ -461,14 +461,10 @@ TaskCollection HydroDriver::MakeTaskCollection(BlockList_t &blocks, int stage) {
 
     for (int i = 0; i < num_partitions; i++) {
       auto &mu0 = pmesh->mesh_data.GetOrAdd("base", i);
-      auto prev_task =
+      auto compute_frame_speed =
           tl.AddTask(prev_task, fractal_ism::compute_frame_v, mu0.get());
+      prev_task = compute_frame_speed;
     }
-#ifdef MPI_PARALLEL
-    auto reduce_agn_triggering =
-        tl.AddTask(prev_task, cluster::AGNTriggeringMPIReduceTriggering, hydro_pkg.get());
-    prev_task = reduce_agn_triggering;
-#endif
 
     // Boost frame
     for (int i = 0; i < num_partitions; i++) {
