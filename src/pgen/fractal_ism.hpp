@@ -15,6 +15,11 @@
 
 namespace fractal_ism {
 
+int64_t*** create_4d_array(int x1, int x2, int x3, int layers);
+
+void delete_4d_array(int64_t*** array, int x1, int x2, int x3);
+
+int64_t*** ICsReader(const std::string& filename, int dim1, int dim2, int dim3);
         
 parthenon::TaskStatus compute_frame_v(parthenon::MeshData<parthenon::Real> *md);
 

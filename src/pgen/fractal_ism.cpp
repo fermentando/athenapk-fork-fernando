@@ -26,7 +26,7 @@ namespace fractal_ism {
 using namespace parthenon;
 
 
-//Comute and store mean_molecularmass
+//Comute and store mean_molecular_mass
 void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   // no access to package in this function so we use a local units object
   Units units(pin);
@@ -39,6 +39,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   hydro_pkg -> AddParam<Real>("fractalism::mean_molecular_mass_by_kb", mu * units.atomic_mass_unit() / units.k_boltzmann());
 
 }
+
 
 // Compute frame_boosting velocity
 parthenon::TaskStatus
@@ -165,6 +166,74 @@ apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
     return TaskStatus::complete; //compute only every 100 timesteps
   // output prior to every output
 }
+
+
+// *******************************************************************************
+//           Reading general initial conditions from binary file 
+// *******************************************************************************
+
+//----------------------------------------------------------------------------------------
+//! \fn void MeshBlock::ProblemGenerator(ParameterInput *pin)
+//  \brief Problem Generator for the Fractal ISM simulation set up
+
+void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
+
+  Units units(pin);
+  auto d_cgs_factor = 1. / units.code_density_cgs();
+  auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
+  auto e_cgs_factor = 1. / (m_cgs_factor*m_cgs_factor / units.code_density_cgs());
+
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto nhydro = hydro_pkg->Param<int>("nhydro");
+  const auto nscalars = hydro_pkg->Param<int>("nscalars");
+
+  const int dim1 = pmb->cellbounds.ncellsi(IndexDomain::interior);
+  const int dim2 = pmb->cellbounds.ncellsj(IndexDomain::interior);
+  const int dim3 = pmb->cellbounds.ncellsk(IndexDomain::interior);
+
+  // initialize conserved variables
+  auto &mbd = pmb->meshblock_data.Get();
+  auto &u_dev = mbd->Get("cons").data;
+  // initializing on host
+  auto u = u_dev.GetHostMirrorAndCopy();
+
+  // Read ICs binary
+    std::ifstream file("array_4d.bin", std::ios::in | std::ios::binary);
+    
+    if (!file.is_open()) {
+        PARTHENON_FAIL("Failed to open file");
+    }
+    
+    size_t size;
+    file.read(reinterpret_cast<char*>(&size), sizeof(size_t));
+    
+    if (size != dim1 * dim2 * dim3 * 3) {
+        PARTHENON_FAIL("File size mismatch");
+    }
+    
+    double* data = new double[dim1 * dim2 * dim3 * 3];
+    
+    file.read(reinterpret_cast<char*>(data), size * sizeof(Real));
+    
+    // Assign values to primary variables
+    for (int i = 0; i < dim1; ++i) {
+        for (int j = 0; j < dim2; ++j) {
+            for (int k = 0; k < dim3; ++k) {
+                  u(IDN, k, j, i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * d_cgs_factor;
+                  u(IM2, k, j, i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * m_cgs_factor;
+                  u(IEN, k, j, i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * e_cgs_factor;
+            }
+        }
+    }
+    
+    delete[] data;
+  
+
+
+  // copy initialized vars to device
+  u_dev.DeepCopy(u);
+}
+
 
 
 }
