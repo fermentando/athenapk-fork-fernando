@@ -198,7 +198,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   auto u = u_dev.GetHostMirrorAndCopy();
 
   // Read ICs binary
-    std::ifstream file("array_4d.bin", std::ios::in | std::ios::binary);
+    std::ifstream file("ICs.bin", std::ios::in | std::ios::binary);
     
     if (!file.is_open()) {
         PARTHENON_FAIL("Failed to open file");
@@ -213,7 +213,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
     
     double* data = new double[dim1 * dim2 * dim3 * 3];
     
-    file.read(reinterpret_cast<char*>(data), size * sizeof(Real));
+    file.read(reinterpret_cast<char*>(data), size * sizeof(int64_t));
     
     // Assign values to primary variables
     for (int i = 0; i < dim1; ++i) {
@@ -234,6 +234,31 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   u_dev.DeepCopy(u);
 }
 
+
+parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
+  auto pmb = mbd->GetBlockPointer();
+  auto w = mbd->Get("prim").data;
+
+  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
+  IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
+
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto nhydro = hydro_pkg->Param<int>("nhydro");
+
+  Real maxscalar = 0.0;
+  pmb->par_reduce(
+      "cloud refinement", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e + 1,
+      KOKKOS_LAMBDA(const int k, const int j, const int i, Real &lmaxscalar) {
+        // scalar is first variable after hydro vars
+        lmaxscalar = std::max(lmaxscalar, w(nhydro, k, j, i));
+      },
+      Kokkos::Max<Real>(maxscalar));
+
+  if (maxscalar > 0.01) return parthenon::AmrTag::refine;
+  if (maxscalar < 0.001) return parthenon::AmrTag::derefine;
+  return parthenon::AmrTag::same;
+};
 
 
 }
