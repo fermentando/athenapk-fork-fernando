@@ -361,6 +361,8 @@ apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
         auto &cons = cons_pack(b);
 
         cons(IM2, k, j, i) -= frame_v * prim(IDN, k, j, i);
+        prim(IV2, k, j, i) -= frame_v;
+        //hydro_pkg->Param<AdiabaticHydroEOS>("eos").ConsToPrim(cons, prim, nhydro, nscalars, k, j, i);
       });
 
     return TaskStatus::complete; //compute only every 100 timesteps
