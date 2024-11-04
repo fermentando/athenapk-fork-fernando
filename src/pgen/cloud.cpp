@@ -301,56 +301,26 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
   Real md_cold_gas;
 
 
-  pmb->par_reduce(
-      "SingleCloud::frame_boosting_velocity", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
-      ib.e,
+
+  Kokkos::parallel_reduce(
+      "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5)-1, kb.e, jb.e, ib.e}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i, 
-      Real &local_IM_cold_gas) {
+      Real& local_IM_cold_gas, Real& local_cold_gas) {
         auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
         if ( coords.Xc<1>(i) < 0 ) {
+          const Real temp =
+              mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
 
-
-          if (temp <= 2*T_cloud) {
-
-            const Real cell_cold_mass = prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
-            const Real cold_v3 = pow(cons(IM3, k, j, i), 2);
-            const Real cold_v2 = pow(cons(IM2, k, j, i), 2);
-            const Real cold_v1 = pow(cons(IM1, k, j, i), 2);
-            const Real cold_gas_speed = std::sqrt(cold_v1 + cold_v2 + cold_v3);
-
-            local_IM_cold_gas += cell_cold_mass * cold_gas_speed;
+          if (temp <= 2*1e4) {
+            local_IM_cold_gas += cons(IM2, k, j, i); //* coords.CellVolume(k, j, i);
+            local_cold_gas += prim(IDN, k, j, i);// * coords.CellVolume(k, j, i);
 
           }
         }
       },
-      Kokkos::Sum<Real>(IM_cold_gas)); //parthenon_output
-
-
-  pmb->par_reduce(
-      "SingleCloud:frame_boosting_velocity", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
-      ib.e,
-      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
-       Real &local_cold_gas) {
-        auto &prim = prim_pack(b);
-        auto &cons = cons_pack(b);
-        const auto &coords = cons_pack.GetCoords(b);
-        if ( coords.Xc<1>(i) < 0 ) {
-
-          if (temp <= 2*T_cloud) {
-
-            const Real cell_cold_mass = prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
-            const Real cold_v3 = pow(cons(IM3, k, j, i), 2);
-            const Real cold_v2 = pow(cons(IM2, k, j, i), 2);
-            const Real cold_v1 = pow(cons(IM1, k, j, i), 2);
-            const Real cold_gas_speed = std::sqrt(cold_v1 + cold_v2 + cold_v3);
-
-            local_cold_gas+= cell_cold_mass;
-
-          }
-        }
-      }, Kokkos::Sum<Real>(md_cold_gas));
+      Kokkos::Sum<Real>(IM_cold_gas), Kokkos::Sum<Real>(md_cold_gas)); //parthenon_output
 
     Real frame_v = IM_cold_gas / md_cold_gas;
     if (frame_v != 0.) hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
@@ -391,7 +361,6 @@ apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
         auto &cons = cons_pack(b);
 
         cons(IM2, k, j, i) -= frame_v * prim(IDN, k, j, i);
-        // Should add output to track x_shift?
       });
 
     return TaskStatus::complete; //compute only every 100 timesteps
