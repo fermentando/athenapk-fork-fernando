@@ -19,6 +19,7 @@
 #include "../eos/adiabatic_hydro.hpp"
 #include "../pgen/cluster/agn_triggering.hpp"
 #include "../pgen/cluster/magnetic_tower.hpp"
+#include "../pgen/cloud.hpp"
 #include "../pgen/fractal_ism.hpp"
 #include "diffusion/diffusion.hpp"
 #include "glmmhd/glmmhd.hpp"
@@ -448,9 +449,9 @@ TaskCollection HydroDriver::MakeTaskCollection(BlockList_t &blocks, int stage) {
 
   // Calculate frame boosting for cloud-crushing simulations
   // TODO (fermentando) new mesh block u1 for flux calculation (Check original Athena++ docs)
-  if ((stage == 1) &&
-      hydro_pkg->AllParams().hasKey("frame_boosting") &&
-      hydro_pkg->Param<bool>("frame_boosting")) {
+  /*if ((stage == 1) &&
+      hydro_pkg->AllParams().hasKey("inertial_frame_v")// && hydro_pkg->Param<bool>("frame_boosting")
+      ) {*/
 
     // need to make sure that there's only one region in order to MPI_reduce to work
     TaskRegion &single_task_region = tc.AddRegion(1);
@@ -462,7 +463,7 @@ TaskCollection HydroDriver::MakeTaskCollection(BlockList_t &blocks, int stage) {
     for (int i = 0; i < num_partitions; i++) {
       auto &mu0 = pmesh->mesh_data.GetOrAdd("base", i);
       auto compute_frame_speed =
-          tl.AddTask(prev_task, fractal_ism::compute_frame_v, mu0.get());
+          tl.AddTask(prev_task, cloud::compute_frame_v, mu0.get());
       prev_task = compute_frame_speed;
     }
 
@@ -470,23 +471,24 @@ TaskCollection HydroDriver::MakeTaskCollection(BlockList_t &blocks, int stage) {
     for (int i = 0; i < num_partitions; i++) {
       auto &mu0 = pmesh->mesh_data.GetOrAdd("base", i);
       auto frame_boost =
-          tl.AddTask(prev_task, fractal_ism::apply_frame_boost, mu0.get());
+          tl.AddTask(prev_task, cloud::apply_frame_boost, mu0.get());
       prev_task = frame_boost;
     }
-  }
 
-  for (int i = 0; i < blocks.size(); i++) {
-    auto &pmb = blocks[i];
-    // Using "base" as u0, which already exists (and returned by using plain Get())
-    auto &u0 = pmb->meshblock_data.Get();
+    for (int i = 0; i < blocks.size(); i++) {
+      auto &pmb = blocks[i];
+      // Using "base" as u0, which already exists (and returned by using plain Get())
+      auto &u0 = pmb->meshblock_data.Get();
 
-    // Create meshblock data for register u1.
-    // This is a noop if u1 already exists.
-    // TODO(pgrete) update to derive from other quanity as u1 does not require fluxes
-    if (stage == 1) {
-      pmb->meshblock_data.Add("u1", u0);
+      // Create meshblock data for register u1.
+      // This is a noop if u1 already exists.
+      // TODO(pgrete) update to derive from other quanity as u1 does not require fluxes
+      if (stage == 1) {
+        pmb->meshblock_data.Add("u1", u0);
+      }
     }
-  }
+  //}
+
 
 // ----> end of addition (frame boost)
 

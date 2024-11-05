@@ -25,6 +25,9 @@
 // AthenaPK headers
 #include "../main.hpp"
 #include "../units.hpp"
+#include "../eos/adiabatic_glmmhd.hpp"
+#include "../eos/adiabatic_hydro.hpp"
+#include "cloud.hpp"
 
 namespace cloud {
 using namespace parthenon::driver::prelude;
@@ -87,6 +90,16 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
                      "'aligned', 'transverse', or 'oblique'.");
     }
   }
+
+  const parthenon::Real He_mass_fraction = pin->GetReal("hydro", "He_mass_fraction");
+  const parthenon::Real H_mass_fraction = 1.0 - He_mass_fraction;
+  const parthenon::Real mu =
+      1 / (He_mass_fraction * 3. / 4. + (1 - He_mass_fraction) * 2);
+
+  pkg -> AddParam<Real>("singlecloud::mean_molecular_mass_by_kb", mu * units.atomic_mass_unit() / units.k_boltzmann());
+  //Set frame speed as mutable
+  pkg->AddParam<Real>("inertial_frame_v", 0., true);
+  pkg -> AddParam<Real>("Tcloud", T_cloud);
 
   mom_wind = rho_wind * v_wind;
 
@@ -276,7 +289,6 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
   return parthenon::AmrTag::same;
 };
 
-
 // Compute frame_boosting velocity
 parthenon::TaskStatus
 compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
@@ -297,9 +309,11 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
 
   const auto units = hydro_pkg->Param<Units>("units");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
+  Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
   Real IM_cold_gas;
   Real md_cold_gas;
 
+  std::stringstream msg;
 
 
   Kokkos::parallel_reduce(
@@ -313,9 +327,9 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
           const Real temp =
               mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
 
-          if (temp <= 2*1e4) {
-            local_IM_cold_gas += cons(IM2, k, j, i); //* coords.CellVolume(k, j, i);
-            local_cold_gas += prim(IDN, k, j, i);// * coords.CellVolume(k, j, i);
+          if (temp <= 2*T_cloud) {
+            local_IM_cold_gas += cons(IM2, k, j, i);// * coords.CellVolume(k, j, i);
+            local_cold_gas += prim(IDN, k, j, i); //* coords.CellVolume(k, j, i);
 
           }
         }
@@ -323,6 +337,7 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
       Kokkos::Sum<Real>(IM_cold_gas), Kokkos::Sum<Real>(md_cold_gas)); //parthenon_output
 
     Real frame_v = IM_cold_gas / md_cold_gas;
+    msg << "FRAME BOOST" << frame_v;
     if (frame_v != 0.) hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
 
     return TaskStatus::complete;
@@ -340,30 +355,34 @@ apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
 
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
-  const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
-  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
-  const auto nhydro = hydro_pkg->Param<int>("nhydro");
-  const auto nscalars = hydro_pkg->Param<int>("nscalars");
+  auto nhydro = hydro_pkg->Param<int>("nhydro");
+  auto nscalars = hydro_pkg->Param<int>("nscalars");
 
   Real frame_v = hydro_pkg->Param<Real>("inertial_frame_v");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
   if (fabs(frame_v) > 100.01 || frame_v < 0.0) frame_v = 0.;
 
 
-  parthenon::par_for(
-      DEFAULT_LOOP_PATTERN, "SingleCloud::AdjustingFrameSpeed", parthenon::DevExecSpace(), 0,
-      cons_pack.GetDim(5) - 1, 0, cons_pack.GetDim(4) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
-      ib.e + 1, 
-      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i, const Real& frame_v) {
+  Kokkos::parallel_for(
+    "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5)-1, kb.e, jb.e, ib.e}),
+    KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
 
-        cons(IM2, k, j, i) -= frame_v * prim(IDN, k, j, i);
-        prim(IV2, k, j, i) -= frame_v;
-        //hydro_pkg->Param<AdiabaticHydroEOS>("eos").ConsToPrim(cons, prim, nhydro, nscalars, k, j, i);
-      });
+        const Real temp =
+          mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+
+        //if (temp <= 1e4) {
+          cons(IM2, k, j, i) -= frame_v * prim(IDN, k, j, i);
+          prim(IV2, k, j, i) -= frame_v;
+          //try setting v-> after update and using case ==1 in hydro_driver
+          //hydro_pkg->Param<AdiabaticHydroEOS>("eos").ConsToPrim(cons, prim, nhydro, nscalars, k, j, i);
+    });
 
     return TaskStatus::complete; //compute only every 100 timesteps
   // output prior to every output
