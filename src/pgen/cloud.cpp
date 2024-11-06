@@ -11,6 +11,7 @@
 #include <algorithm> // min, max
 #include <cmath>     // log
 #include <cstring>   // strcmp()
+#include <fstream>   // bin file
 
 // Parthenon headers
 #include "mesh/mesh.hpp"
@@ -148,75 +149,103 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 //  \brief Problem Generator for the cloud in wind setup
 
 void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
+
+  Units units(pin);
+  auto d_cgs_factor = 1. / units.code_density_cgs();
+  auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
+  auto e_cgs_factor = 1. / (m_cgs_factor*m_cgs_factor / units.code_density_cgs());
+
   auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto nhydro = hydro_pkg->Param<int>("nhydro");
+  const auto nscalars = hydro_pkg->Param<int>("nscalars");
+
+  const int dim1 = pmb->cellbounds.ncellsi(IndexDomain::interior);
+  const int dim2 = pmb->cellbounds.ncellsj(IndexDomain::interior);
+  const int dim3 = pmb->cellbounds.ncellsk(IndexDomain::interior);
+
   auto ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
   auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   auto kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
 
-  const auto nhydro = hydro_pkg->Param<int>("nhydro");
-  const auto nscalars = hydro_pkg->Param<int>("nscalars");
-
-  const bool mhd_enabled = hydro_pkg->Param<Fluid>("fluid") == Fluid::glmmhd;
-  if (((Bx != 0.0) || (By != 0.0) || (Bz != 0.0)) && !mhd_enabled) {
-    PARTHENON_FAIL("Requested to initialize magnetic fields by `cloud/plasma_beta > 0`, "
-                   "but `hydro/fluid` is not supporting MHD.");
-  }
-
-  auto steepness = pin->GetOrAddReal("problem/cloud", "cloud_steepness", 10);
-
   // initialize conserved variables
   auto &mbd = pmb->meshblock_data.Get();
   auto &u_dev = mbd->Get("cons").data;
-  auto &coords = pmb->coords;
+
+  //Overall dimensions of the grid
+  int Nx = 192, Ny = 320, Nz = 192; 
+  int Nq = 3;
+  //Number of dimensions in variables
+
   // initializing on host
   auto u = u_dev.GetHostMirrorAndCopy();
 
-  // Read problem parameters
-  for (int k = kb.s; k <= kb.e; k++) {
-    for (int j = jb.s; j <= jb.e; j++) {
-      for (int i = ib.s; i <= ib.e; i++) {
-        const Real x = coords.Xc<1>(i);
-        const Real y = coords.Xc<2>(j);
-        const Real z = coords.Xc<3>(k);
-        const Real rad = std::sqrt(SQR(x) + SQR(y) + SQR(z));
+  // Read ICs binary
+    std::ifstream infile("/Users/fernando/PhD/CloudTracker/ICs.bin", std::ios::in | std::ios::binary);
+    
+    
+    if (!infile.is_open()) {
+        PARTHENON_FAIL("Failed to open file");
+    }
+    
+    
+    std::stringstream msg;
+    msg << "dimensions" << dim1 << "x" << dim2 << "x" << dim3 << "x" << 3 << std::endl;
+    msg << "end - start iteration cells: " << kb.e - kb.s << "x" << jb.e - jb.s << "x" << ib.e - ib.s << "x" << 3 << std::endl;
+    
+    float size;
+    if (size != dim1 * dim2 * dim3 * 3) {
+        
+        msg << "File size mismatch with meshblock" << std::endl;
+    }
+    std::cout << msg.str();
 
-        Real rho = rho_wind + 0.5 * (rho_cloud - rho_wind) *
-                                  (1.0 - std::tanh(steepness * (rad / r_cloud - 1.0)));
+    double* data = new double[dim1 * dim2 * dim3 * 3];
+    
+    
+    // Assign values to primary variables
+    /*
+    Kokkos::parallel_for(
+    "ProblemCreator", Kokkos::MDRangePolicy<Kokkos::Rank<3>>({0, 0, 0}, {dim3-1, dim2-1, dim1-1}),
+    KOKKOS_LAMBDA(const int &k, const int &j, const int &i){});
+    */
+    for (int i = 0; i < dim1; i++) {
+        for (int j = 0; j < dim2; j++) {
+            for (int k = 0; k < dim3; k++) {
+              
+              int global_x = ib.s + i;
+              int global_y = jb.s + j;
+              int global_z = kb.s + k;
 
-        Real mom;
-        // Factor 1.3 as used in Grønnow, Tepper-García, & Bland-Hawthorn 2018,
-        // i.e., outside the cloud boundary region (for steepness 10)
-        if (rad > 1.3 * r_cloud) {
-          mom = mom_wind;
-        } else {
-          mom = 0.0;
-        }
+              std::streampos positionDN = (((global_z * Ny + global_y) * Nx + global_x) * Nq + 0) * sizeof(double);
+              std::streampos positionM2 = (((global_z * Ny + global_y) * Nx + global_x) * Nq + 1) * sizeof(double);
+              std::streampos positionIEN = (((global_z * Ny + global_y) * Nx + global_x) * Nq + 2) * sizeof(double);
+              
+              double valueDN, valueM2, valueIEN;
+              infile.seekg(positionDN, std::ios::beg);
+              infile.read(reinterpret_cast<char*>(&valueDN), sizeof(double));
+            
+              infile.seekg(positionM2, std::ios::beg);
+              infile.read(reinterpret_cast<char*>(&valueM2), sizeof(double));
 
-        u(IDN, k, j, i) = rho;
-        u(IM2, k, j, i) = mom;
-        // Can use rhoe_wind here as simulation is setup in pressure equil.
-        u(IEN, k, j, i) = rhoe_wind + 0.5 * mom * mom / rho;
+              infile.seekg(positionIEN, std::ios::beg);
+              infile.read(reinterpret_cast<char*>(&valueIEN), sizeof(double));
 
-        if (mhd_enabled) {
-          u(IB1, k, j, i) = Bx;
-          u(IB2, k, j, i) = By;
-          u(IB3, k, j, i) = Bz;
-          u(IEN, k, j, i) += 0.5 * (Bx * Bx + By * By + Bz * Bz);
-        }
-
-        // Init passive scalars
-        for (auto n = nhydro; n < nhydro + nscalars; n++) {
-          if (rad <= r_cloud) {
-            u(n, k, j, i) = 1.0 * rho;
-          }
+              u(IDN, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueDN) * d_cgs_factor;
+              u(IM2, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueM2) * m_cgs_factor;
+              u(IEN, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueIEN) * e_cgs_factor;
         }
       }
     }
-  }
+    
+    delete[] data;
+  
+
 
   // copy initialized vars to device
   u_dev.DeepCopy(u);
+  
 }
+
 
 void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();

@@ -191,6 +191,10 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   const int dim2 = pmb->cellbounds.ncellsj(IndexDomain::interior);
   const int dim3 = pmb->cellbounds.ncellsk(IndexDomain::interior);
 
+  auto ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
+  auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  auto kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
+
   // initialize conserved variables
   auto &mbd = pmb->meshblock_data.Get();
   auto &u_dev = mbd->Get("cons").data;
@@ -219,9 +223,9 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
     for (int i = 0; i < dim1; ++i) {
         for (int j = 0; j < dim2; ++j) {
             for (int k = 0; k < dim3; ++k) {
-                  u(IDN, k, j, i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * d_cgs_factor;
-                  u(IM2, k, j, i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * m_cgs_factor;
-                  u(IEN, k, j, i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * e_cgs_factor;
+                  u(IDN, kb.s+k, jb.s+j, ib.s+i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * d_cgs_factor;
+                  u(IM2, kb.s+k, jb.s+j, ib.s+i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * m_cgs_factor;
+                  u(IEN, kb.s+k, jb.s+j, ib.s+i) = data[i + j * dim1 + k * dim1 * dim2 + 0 * dim1 * dim2 * dim3] * e_cgs_factor;
             }
         }
     }
