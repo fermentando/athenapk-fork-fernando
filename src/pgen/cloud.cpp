@@ -159,6 +159,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto mbar_over_kb = hydro_pkg->Param<Real>("mbar_over_kb");
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto nscalars = hydro_pkg->Param<int>("nscalars");
   const auto num_blocks = md->NumBlocks();
@@ -188,7 +189,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   //auto &u_dev = mbd->Get("cons").data;
 
   //Quantities to initialise
-  int Nq = 3;
+  int Nq = 4;
 
   // initializing on host
   //auto u = u_dev.GetHostMirrorAndCopy();
@@ -202,8 +203,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
   //Store ICs in Kokkos view
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
-  typedef Kokkos::View<double*, Kokkos::HostSpace>   ViewICsType;
-  ViewICsType ICsdata("data", size);
+  Kokkos::View<double*> ICsdata("data", size);
 
   std::stringstream msg;
   msg << "Check size of mesh: " << Ncellx1 << "x"<< Ncellx2 << "x"<< Ncellx3 << std::endl;
@@ -211,8 +211,11 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   infile.read(reinterpret_cast<char*>(ICsdata.data()), size * sizeof(double));
   infile.close();
   msg << "Datapoint min: ("<< x1min << "x" << x2min << "x" << x3min << ")" << std::endl;
-  msg << "Datapoint 0 :" << typeid(ICsdata(3)).name() << std::endl;
   std::cout << msg.str();
+
+  const auto rho_wind_ = rho_wind;
+  const auto mom_wind_ = mom_wind;
+  const auto rhoe_wind_ = rhoe_wind;
 
   
   // Assign values to primary variables
@@ -221,19 +224,20 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
 
       const auto &u = cons(b);
-      //const auto &coords = cons.GetCoords(b);
-      //const int global_x = (coords.Xc<1>(i) - lsizex1/2 - x1min)/lsizex1;
-      //const int global_y = (coords.Xc<2>(j) - lsizex2/2 - x2min)/lsizex2;
-      //const int global_z = (coords.Xc<3>(k) - lsizex3/2 - x3min)/lsizex3;
+      const auto &coords = cons.GetCoords(b);
+      const int global_x = (coords.Xc<1>(i) - lsizex1/2 - x1min)/lsizex1;
+      const int global_y = (coords.Xc<2>(j) - lsizex2/2 - x2min)/lsizex2;
+      const int global_z = (coords.Xc<3>(k) - lsizex3/2 - x3min)/lsizex3;
 
-      //size_t indexDN = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0;
-      //size_t indexM2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1;
-      //size_t indexIEN = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2;
+      int indexDN = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0;
+      int indexM2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1;
+      int indexIEN1 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2;
+      int indexIEN2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 3;
 
-      parthenon::Real idn_value = 30.;
-      u(IDN, k, j, i) =  idn_value; //ICsdata(indexDN)* d_cgs_factor;;
-      u(IM2, k, j, i) =  idn_value; //ICsdata(indexM2)* m_cgs_factor;;
-      u(IEN, k, j, i) =  idn_value; //ICsdata(indexIEN)* e_cgs_factor;;
+
+      u(IDN, k, j, i) = rho_wind_;// ICsdata(indexDN)* d_cgs_factor;;
+      u(IM2, k, j, i) =  mom_wind_; //ICsdata(indexM2)* m_cgs_factor;;
+      u(IEN, k, j, i) =  rhoe_wind_ + 0.5 * mom_wind_ * mom_wind_ / rho_wind_;//(ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor;;
     });
   
   /*
