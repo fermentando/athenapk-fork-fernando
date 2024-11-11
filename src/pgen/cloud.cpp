@@ -323,7 +323,7 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
         auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
-        if ( coords.Xc<1>(i) < 0 ) {
+        if ( coords.Xc<2>(j) < 0 ) {
           const Real temp =
               mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
 
@@ -336,11 +336,12 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
       },
       Kokkos::Sum<Real>(IM_cold_gas), Kokkos::Sum<Real>(md_cold_gas)); //parthenon_output
 
-    Real frame_v = IM_cold_gas / md_cold_gas;
-    msg << "FRAME BOOST" << frame_v;
-    if (frame_v != 0.) hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
+  Real frame_v = IM_cold_gas / md_cold_gas;
+  msg << "FRAME BOOST" << frame_v;
+  if (frame_v != 0.) hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
+  std::cout << msg.str();
 
-    return TaskStatus::complete;
+  return TaskStatus::complete;
 
 }
 
@@ -376,12 +377,12 @@ apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
 
         const Real temp =
           mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
-
-        //if (temp <= 1e4) {
+          assert(("Negative densities before frame boost", prim(IDN, k, j, i) < 0.));
+          
+          cons(IEN, k, j, i) -= frame_v * cons(IM2, k, j, i);
+          cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * prim(IDN, k, j, i);
           cons(IM2, k, j, i) -= frame_v * prim(IDN, k, j, i);
-          prim(IV2, k, j, i) -= frame_v;
-          //try setting v-> after update and using case ==1 in hydro_driver
-          //hydro_pkg->Param<AdiabaticHydroEOS>("eos").ConsToPrim(cons, prim, nhydro, nscalars, k, j, i);
+          assert(("Negative densities after frame boost", prim(IDN, k, j, i) < 0.));
     });
 
     return TaskStatus::complete; //compute only every 100 timesteps
