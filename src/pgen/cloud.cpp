@@ -201,26 +201,30 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   }
 
 
-  //Store ICs in Kokkos view
+  //View for ICs Kokkos initialization
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
-  Kokkos::View<double*> ICsdata("data", size);
+  typedef Kokkos::View<double*> BinArr;
+  BinArr ICsdata("data", size); 
+  BinArr::HostMirror hICs = Kokkos::create_mirror_view(ICsdata);
 
-  std::stringstream msg;
-  msg << "Check size of mesh: " << Ncellx1 << "x"<< Ncellx2 << "x"<< Ncellx3 << std::endl;
-  msg << "Is this what is failing?" << std::endl;
-  infile.read(reinterpret_cast<char*>(ICsdata.data()), size * sizeof(double));
+
+  //Get data from Binary
+  std::vector<double> temp_data(size);
+  
+  infile.read(reinterpret_cast<char*>(temp_data.data()), size * sizeof(double));
   infile.close();
-  msg << "Datapoint min: ("<< x1min << "x" << x2min << "x" << x3min << ")" << std::endl;
-  std::cout << msg.str();
 
-  const auto rho_wind_ = rho_wind;
-  const auto mom_wind_ = mom_wind;
-  const auto rhoe_wind_ = rhoe_wind;
+  for (size_t i = 0; i < size; ++i) {
+    hICs(i) = temp_data[i];
+  }
+
+  //Pass data onto dev memory space 
+  Kokkos::deep_copy(ICsdata, hICs);
 
   
   // Assign values to primary variables
 
-  Kokkos::parallel_for( "Cloud::ProblemGenerator", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s},{num_blocks -1, kb.e, jb.e, ib.e}),
+  Kokkos::parallel_for( "Cloud::ProblemGenerator", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s , jb.s, ib.s },{num_blocks, kb.e + 1, jb.e + 1, ib.e + 1}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
 
       const auto &u = cons(b);
@@ -234,84 +238,12 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
       int indexIEN1 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2;
       int indexIEN2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 3;
 
+      u(IDN, k, j, i) = ICsdata(indexDN)* d_cgs_factor;
+      u(IM2, k, j, i) =  ICsdata(indexM2)* m_cgs_factor;
+      u(IEN, k, j, i) =  (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor;
 
-      u(IDN, k, j, i) = rho_wind_;// ICsdata(indexDN)* d_cgs_factor;;
-      u(IM2, k, j, i) =  mom_wind_; //ICsdata(indexM2)* m_cgs_factor;;
-      u(IEN, k, j, i) =  rhoe_wind_ + 0.5 * mom_wind_ * mom_wind_ / rho_wind_;//(ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor;;
     });
   
-  /*
-  pmb->par_for(
-      "Binary ICs", 0, num_blocks - 1, kb.s, kb.e , jb.s ,
-      jb.e, ib.s, ib.e,
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
-        
-
-        const int global_x = (coords.Xc<1>(i) - x1min)/lsizex1;
-        const int global_y = (coords.Xc<2>(j) - x2min)/lsizex2;
-        const int global_z = (coords.Xc<3>(k) - x3min)/lsizex3;
-        
-
-        std::streampos positionDN = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0) * sizeof(double);
-        std::streampos positionM2 = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1) * sizeof(double);
-        std::streampos positionIEN = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2) * sizeof(double);
-        
-        double valueDN, valueM2, valueIEN;
-        infile.seekg(positionDN, std::ios::beg);
-        infile.read(reinterpret_cast<char*>(&valueDN), sizeof(double));
-      
-        infile.seekg(positionM2, std::ios::beg);
-        infile.read(reinterpret_cast<char*>(&valueM2), sizeof(double));
-
-        infile.seekg(positionIEN, std::ios::beg);
-        infile.read(reinterpret_cast<char*>(&valueIEN), sizeof(double));
-
-        u(IDN, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueDN) * d_cgs_factor;
-        u(IM2, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueM2) * m_cgs_factor;
-        u(IEN, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueIEN) * e_cgs_factor;
-  });
-  
-
-
-  for (int k = kb.s; k <= kb.e; k++) {
-      for (int j = jb.s; j <= jb.e; j++) {
-        for (int i = ib.s; i <= ib.e; i++) {
-              
-              std::stringstream msg;
-              const int global_x = (coords.Xc<1>(i) - x1min)/lsizex1;
-              const int global_y = (coords.Xc<2>(j) - x2min)/lsizex2;
-              const int global_z = (coords.Xc<3>(k) - x3min)/lsizex3;
-           
-
-              std::streampos positionDN = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0) * sizeof(double);
-              std::streampos positionM2 = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1) * sizeof(double);
-              std::streampos positionIEN = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2) * sizeof(double);
-              
-              double valueDN, valueM2, valueIEN;
-              infile.seekg(positionDN, std::ios::beg);
-              infile.read(reinterpret_cast<char*>(&valueDN), sizeof(double));
-            
-              infile.seekg(positionM2, std::ios::beg);
-              infile.read(reinterpret_cast<char*>(&valueM2), sizeof(double));
-
-              infile.seekg(positionIEN, std::ios::beg);
-              infile.read(reinterpret_cast<char*>(&valueIEN), sizeof(double));
-
-              msg << "Density value in code units:" << static_cast<Real>(valueDN) * d_cgs_factor << std::endl;
-
-              u(IDN, k, j, i) =  30.;//static_cast<Real>(valueDN) * d_cgs_factor;
-              u(IM2, k, j, i) =  30.; //static_cast<Real>(valueM2) * m_cgs_factor;
-              u(IEN, k, j, i) =  30.; //static_cast<Real>(valueIEN) * e_cgs_factor;
-              std::cout << msg.str();
-        }
-      }
-    }
-
-    */
-    
-    
-  
-
   // copy initialized vars to device
   //u_dev.DeepCopy(u);
   
