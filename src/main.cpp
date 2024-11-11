@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
     pman.app_input->UserWorkAfterLoop = cpaw::UserWorkAfterLoop;
   } else if (problem == "cloud") {
     pman.app_input->InitUserMeshData = cloud::InitUserMeshData;
-    pman.app_input->ProblemGenerator = cloud::ProblemGenerator;
+    pman.app_input->MeshProblemGenerator = cloud::ProblemGenerator;
     pman.app_input->boundary_conditions[parthenon::BoundaryFace::inner_x2] =
         cloud::InflowWindX2;
     Hydro::ProblemCheckRefinementBlock = cloud::ProblemCheckRefinementBlock;

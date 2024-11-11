@@ -27,8 +27,10 @@
 #include "../main.hpp"
 #include "../units.hpp"
 
+
 namespace cloud {
 using namespace parthenon::driver::prelude;
+using namespace parthenon::package::prelude;
 
 Real rho_wind, mom_wind, rhoe_wind, r_cloud, rho_cloud;
 Real Bx = 0.0;
@@ -148,77 +150,138 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 //! \fn void MeshBlock::ProblemGenerator(ParameterInput *pin)
 //  \brief Problem Generator for the cloud in wind setup
 
-void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
+void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
   Units units(pin);
   auto d_cgs_factor = 1. / units.code_density_cgs();
   auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
   auto e_cgs_factor = 1. / (m_cgs_factor*m_cgs_factor / units.code_density_cgs());
 
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto nscalars = hydro_pkg->Param<int>("nscalars");
-
-  const int dim1 = pmb->cellbounds.ncellsi(IndexDomain::interior);
-  const int dim2 = pmb->cellbounds.ncellsj(IndexDomain::interior);
-  const int dim3 = pmb->cellbounds.ncellsk(IndexDomain::interior);
+  const auto num_blocks = md->NumBlocks();
 
   auto ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
   auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   auto kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
 
-  // initialize conserved variables
-  auto &mbd = pmb->meshblock_data.Get();
-  auto &u_dev = mbd->Get("cons").data;
+  const auto Ncellx1 = pmesh->mesh_size.nx(X1DIR);
+  const auto Ncellx2 = pmesh->mesh_size.nx(X2DIR);
+  const auto Ncellx3 = pmesh->mesh_size.nx(X3DIR);
 
-  //Overall dimensions of the grid
-  int Nx = 192, Ny = 320, Nz = 192; 
+
+  const auto lsizex1 = (pmesh->mesh_size.xmax(X1DIR) - pmesh->mesh_size.xmin(X1DIR))/Ncellx1;
+  const auto lsizex2 = (pmesh->mesh_size.xmax(X2DIR) - pmesh->mesh_size.xmin(X2DIR))/Ncellx2;
+  const auto lsizex3 = (pmesh->mesh_size.xmax(X3DIR) - pmesh->mesh_size.xmin(X3DIR))/Ncellx3;
+
+  const auto x1min = pmesh->mesh_size.xmin(X1DIR);
+  const auto x2min = pmesh->mesh_size.xmin(X2DIR);
+  const auto x3min = pmesh->mesh_size.xmin(X3DIR);
+
+
+  // initialize conserved variables
+  //auto &coords = pmb->coords;
+  auto &mbd = pmb->meshblock_data.Get();
+  auto const &cons = md->PackVariables(std::vector<std::string>{"cons"});
+  //auto &u_dev = mbd->Get("cons").data;
+
+  //Quantities to initialise
   int Nq = 3;
-  //Number of dimensions in variables
 
   // initializing on host
-  auto u = u_dev.GetHostMirrorAndCopy();
+  //auto u = u_dev.GetHostMirrorAndCopy();
 
-  // Read ICs binary
-    std::ifstream infile("/Users/fernando/PhD/CloudTracker/ICs.bin", std::ios::in | std::ios::binary);
-    
-    
-    if (!infile.is_open()) {
-        PARTHENON_FAIL("Failed to open file");
-    }
-    
-    
-    std::stringstream msg;
-    msg << "dimensions" << dim1 << "x" << dim2 << "x" << dim3 << "x" << 3 << std::endl;
-    msg << "end - start iteration cells: " << kb.e - kb.s << "x" << jb.e - jb.s << "x" << ib.e - ib.s << "x" << 3 << std::endl;
-    
-    float size;
-    if (size != dim1 * dim2 * dim3 * 3) {
+// Read ICs binary
+  std::ifstream infile("/home/fernando/TestRuns/ICs.bin",  std::ios::in | std::ios::binary);
+  if (!infile.is_open()) {
+      PARTHENON_FAIL("Failed to open ICs bin file.");
+  }
+
+
+  //Store ICs in Kokkos view
+  size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
+  typedef Kokkos::View<double*, Kokkos::HostSpace>   ViewICsType;
+  ViewICsType ICsdata("data", size);
+
+  std::stringstream msg;
+  msg << "Check size of mesh: " << Ncellx1 << "x"<< Ncellx2 << "x"<< Ncellx3 << std::endl;
+  msg << "Is this what is failing?" << std::endl;
+  infile.read(reinterpret_cast<char*>(ICsdata.data()), size * sizeof(double));
+  infile.close();
+  msg << "Datapoint min: ("<< x1min << "x" << x2min << "x" << x3min << ")" << std::endl;
+  msg << "Datapoint 0 :" << typeid(ICsdata(3)).name() << std::endl;
+  std::cout << msg.str();
+
+  
+  // Assign values to primary variables
+
+  Kokkos::parallel_for( "Cloud::ProblemGenerator", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s},{num_blocks -1, kb.e, jb.e, ib.e}),
+      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+
+      const auto &u = cons(b);
+      //const auto &coords = cons.GetCoords(b);
+      //const int global_x = (coords.Xc<1>(i) - lsizex1/2 - x1min)/lsizex1;
+      //const int global_y = (coords.Xc<2>(j) - lsizex2/2 - x2min)/lsizex2;
+      //const int global_z = (coords.Xc<3>(k) - lsizex3/2 - x3min)/lsizex3;
+
+      //size_t indexDN = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0;
+      //size_t indexM2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1;
+      //size_t indexIEN = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2;
+
+      parthenon::Real idn_value = 30.;
+      u(IDN, k, j, i) =  idn_value; //ICsdata(indexDN)* d_cgs_factor;;
+      u(IM2, k, j, i) =  idn_value; //ICsdata(indexM2)* m_cgs_factor;;
+      u(IEN, k, j, i) =  idn_value; //ICsdata(indexIEN)* e_cgs_factor;;
+    });
+  
+  /*
+  pmb->par_for(
+      "Binary ICs", 0, num_blocks - 1, kb.s, kb.e , jb.s ,
+      jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
         
-        msg << "File size mismatch with meshblock" << std::endl;
-    }
-    std::cout << msg.str();
 
-    double* data = new double[dim1 * dim2 * dim3 * 3];
-    
-    
-    // Assign values to primary variables
-    /*
-    Kokkos::parallel_for(
-    "ProblemCreator", Kokkos::MDRangePolicy<Kokkos::Rank<3>>({0, 0, 0}, {dim3-1, dim2-1, dim1-1}),
-    KOKKOS_LAMBDA(const int &k, const int &j, const int &i){});
-    */
-    for (int i = 0; i < dim1; i++) {
-        for (int j = 0; j < dim2; j++) {
-            for (int k = 0; k < dim3; k++) {
+        const int global_x = (coords.Xc<1>(i) - x1min)/lsizex1;
+        const int global_y = (coords.Xc<2>(j) - x2min)/lsizex2;
+        const int global_z = (coords.Xc<3>(k) - x3min)/lsizex3;
+        
+
+        std::streampos positionDN = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0) * sizeof(double);
+        std::streampos positionM2 = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1) * sizeof(double);
+        std::streampos positionIEN = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2) * sizeof(double);
+        
+        double valueDN, valueM2, valueIEN;
+        infile.seekg(positionDN, std::ios::beg);
+        infile.read(reinterpret_cast<char*>(&valueDN), sizeof(double));
+      
+        infile.seekg(positionM2, std::ios::beg);
+        infile.read(reinterpret_cast<char*>(&valueM2), sizeof(double));
+
+        infile.seekg(positionIEN, std::ios::beg);
+        infile.read(reinterpret_cast<char*>(&valueIEN), sizeof(double));
+
+        u(IDN, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueDN) * d_cgs_factor;
+        u(IM2, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueM2) * m_cgs_factor;
+        u(IEN, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueIEN) * e_cgs_factor;
+  });
+  
+
+
+  for (int k = kb.s; k <= kb.e; k++) {
+      for (int j = jb.s; j <= jb.e; j++) {
+        for (int i = ib.s; i <= ib.e; i++) {
               
-              int global_x = ib.s + i;
-              int global_y = jb.s + j;
-              int global_z = kb.s + k;
+              std::stringstream msg;
+              const int global_x = (coords.Xc<1>(i) - x1min)/lsizex1;
+              const int global_y = (coords.Xc<2>(j) - x2min)/lsizex2;
+              const int global_z = (coords.Xc<3>(k) - x3min)/lsizex3;
+           
 
-              std::streampos positionDN = (((global_z * Ny + global_y) * Nx + global_x) * Nq + 0) * sizeof(double);
-              std::streampos positionM2 = (((global_z * Ny + global_y) * Nx + global_x) * Nq + 1) * sizeof(double);
-              std::streampos positionIEN = (((global_z * Ny + global_y) * Nx + global_x) * Nq + 2) * sizeof(double);
+              std::streampos positionDN = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0) * sizeof(double);
+              std::streampos positionM2 = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1) * sizeof(double);
+              std::streampos positionIEN = (((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2) * sizeof(double);
               
               double valueDN, valueM2, valueIEN;
               infile.seekg(positionDN, std::ios::beg);
@@ -230,19 +293,23 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
               infile.seekg(positionIEN, std::ios::beg);
               infile.read(reinterpret_cast<char*>(&valueIEN), sizeof(double));
 
-              u(IDN, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueDN) * d_cgs_factor;
-              u(IM2, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueM2) * m_cgs_factor;
-              u(IEN, kb.s+k, jb.s+j, ib.s+i) = static_cast<Real>(valueIEN) * e_cgs_factor;
+              msg << "Density value in code units:" << static_cast<Real>(valueDN) * d_cgs_factor << std::endl;
+
+              u(IDN, k, j, i) =  30.;//static_cast<Real>(valueDN) * d_cgs_factor;
+              u(IM2, k, j, i) =  30.; //static_cast<Real>(valueM2) * m_cgs_factor;
+              u(IEN, k, j, i) =  30.; //static_cast<Real>(valueIEN) * e_cgs_factor;
+              std::cout << msg.str();
         }
       }
     }
+
+    */
     
-    delete[] data;
+    
   
 
-
   // copy initialized vars to device
-  u_dev.DeepCopy(u);
+  //u_dev.DeepCopy(u);
   
 }
 
