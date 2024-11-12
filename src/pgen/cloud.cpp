@@ -301,25 +301,26 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
   auto hydro_pkg = pmb->packages.Get("Hydro");
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
   const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
-  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
-  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
-  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::entire);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::entire);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::entire);
+  IndexRange int_ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange int_jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange int_kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto nscalars = hydro_pkg->Param<int>("nscalars");
 
   const auto units = hydro_pkg->Param<Units>("units");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
-  Real IM_cold_gas;
-  Real md_cold_gas;
-
   std::stringstream msg;
 
+  Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
 
   Kokkos::parallel_reduce(
-      "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5)-1, kb.e, jb.e, ib.e}),
+      "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i, 
-      Real& local_IM_cold_gas, Real& local_cold_gas) {
+      Real& local_IM_cold_gas, Real& local_cold_gas) { 
         auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
@@ -328,15 +329,23 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
               mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
 
           if (temp <= 2*T_cloud) {
-            local_IM_cold_gas += cons(IM2, k, j, i);// * coords.CellVolume(k, j, i);
-            local_cold_gas += prim(IDN, k, j, i); //* coords.CellVolume(k, j, i);
 
+            if (k >= int_kb.s && k <= int_kb.e && j >= int_jb.s && j <= int_jb.e &&
+                i >= int_ib.s && i <= int_ib.e) {
+                  local_IM_cold_gas += cons(IM2, k, j, i);// * coords.CellVolume(k, j, i);
+                  local_cold_gas += prim(IDN, k, j, i); //* coords.CellVolume(k, j, i);
+            }
           }
         }
       },
-      Kokkos::Sum<Real>(IM_cold_gas), Kokkos::Sum<Real>(md_cold_gas)); //parthenon_output
-
-  Real frame_v = IM_cold_gas / md_cold_gas;
+      sums[0], sums[1]); //parthenon_output
+#ifdef MPI_PARALLEL
+  // Sum the perturbations over all processors
+  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 2, MPI_PARTHENON_REAL,
+                                    MPI_SUM, MPI_COMM_WORLD));
+#endif // MPI_PARALLEL
+  
+  Real frame_v = sums[0]/sums[1];
   msg << "FRAME BOOST" << frame_v;
   if (frame_v != 0.) hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
   std::cout << msg.str();
@@ -358,32 +367,37 @@ apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
   auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
   auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
-  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
-  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
-  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::entire);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::entire);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::entire);
+  IndexRange int_ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange int_jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange int_kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
   auto nhydro = hydro_pkg->Param<int>("nhydro");
   auto nscalars = hydro_pkg->Param<int>("nscalars");
 
   Real frame_v = hydro_pkg->Param<Real>("inertial_frame_v");
-  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
   if (fabs(frame_v) > 100.01 || frame_v < 0.0) frame_v = 0.;
 
 
+  
   Kokkos::parallel_for(
-    "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5)-1, kb.e, jb.e, ib.e}),
+    "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),  
     KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+
         auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
 
-        const Real temp =
-          mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
-          assert(("Negative densities before frame boost", prim(IDN, k, j, i) < 0.));
+          if (k >= int_kb.s && k <= int_kb.e && j >= int_jb.s && j <= int_jb.e &&
+                i >= int_ib.s && i <= int_ib.e) {
           
-          cons(IEN, k, j, i) -= frame_v * cons(IM2, k, j, i);
-          cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * prim(IDN, k, j, i);
-          cons(IM2, k, j, i) -= frame_v * prim(IDN, k, j, i);
-          assert(("Negative densities after frame boost", prim(IDN, k, j, i) < 0.));
-    });
+            cons(IEN, k, j, i) -= frame_v * cons(IM2, k, j, i);
+            cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * prim(IDN, k, j, i);
+            cons(IM2, k, j, i) -= frame_v * prim(IDN, k, j, i);
+            assert(("Negative densities after frame boost", prim(IDN, k, j, i) < 0.));
+
+         }
+      });
 
     return TaskStatus::complete; //compute only every 100 timesteps
   // output prior to every output
