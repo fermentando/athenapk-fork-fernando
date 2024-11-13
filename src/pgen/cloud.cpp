@@ -309,7 +309,6 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md, const
   const auto units = hydro_pkg->Param<Units>("units");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
-  std::stringstream msg;
 
   Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
 
@@ -338,9 +337,9 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md, const
 #endif // MPI_PARALLEL
   
   Real frame_v = sums[0]/sums[1];
-  msg << "FRAME BOOST" << frame_v;
+  printf("Computed frame boost: %.f \n",frame_v);
   if (frame_v != 0.) hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
-  std::cout << msg.str();
+
 
 
 
@@ -379,11 +378,11 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md, const parthenon::
             cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * cons(IDN, k, j, i);
             cons(IM2, k, j, i) -= frame_v * cons(IDN, k, j, i);
             assert(("Negative densities after frame boost", cons(IDN, k, j, i) < 0.));
-
+    
          
       });
 
-
+    printf("Frame boosted by : %.f \n",frame_v);
   
 }
 
