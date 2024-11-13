@@ -290,8 +290,8 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
 };
 
 // Compute frame_boosting velocity
-parthenon::TaskStatus
-compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
+void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
+                         const Real dt) {
 
   using parthenon::IndexDomain;
   using parthenon::IndexRange;
@@ -299,16 +299,12 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
 
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
-  const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+
   const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
-  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::entire);
-  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::entire);
-  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::entire);
-  IndexRange int_ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
-  IndexRange int_jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
-  IndexRange int_kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
-  const auto nhydro = hydro_pkg->Param<int>("nhydro");
-  const auto nscalars = hydro_pkg->Param<int>("nscalars");
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
 
   const auto units = hydro_pkg->Param<Units>("units");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
@@ -321,20 +317,16 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
       "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i, 
       Real& local_IM_cold_gas, Real& local_cold_gas) { 
-        auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
         if ( coords.Xc<2>(j) < 0 ) {
           const Real temp =
-              mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+              mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
 
           if (temp <= 2*T_cloud) {
 
-            if (k >= int_kb.s && k <= int_kb.e && j >= int_jb.s && j <= int_jb.e &&
-                i >= int_ib.s && i <= int_ib.e) {
                   local_IM_cold_gas += cons(IM2, k, j, i);// * coords.CellVolume(k, j, i);
-                  local_cold_gas += prim(IDN, k, j, i); //* coords.CellVolume(k, j, i);
-            }
+                  local_cold_gas += cons(IDN, k, j, i); //* coords.CellVolume(k, j, i);
           }
         }
       },
@@ -350,14 +342,14 @@ compute_frame_v(parthenon::MeshData<parthenon::Real> *md) {
   if (frame_v != 0.) hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
   std::cout << msg.str();
 
-  return TaskStatus::complete;
+
 
 }
 
 
 // Shift velocities to maintain intertial frame
-parthenon::TaskStatus
-apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
+void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
+                         const Real dt) {
 
   using parthenon::IndexDomain;
   using parthenon::IndexRange;
@@ -365,16 +357,11 @@ apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
 
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
-  auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
   auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
-  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::entire);
-  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::entire);
-  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::entire);
-  IndexRange int_ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
-  IndexRange int_jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
-  IndexRange int_kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
-  auto nhydro = hydro_pkg->Param<int>("nhydro");
-  auto nscalars = hydro_pkg->Param<int>("nscalars");
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
 
   Real frame_v = hydro_pkg->Param<Real>("inertial_frame_v");
   if (fabs(frame_v) > 100.01 || frame_v < 0.0) frame_v = 0.;
@@ -385,22 +372,19 @@ apply_frame_boost(parthenon::MeshData<parthenon::Real> *md) {
     "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),  
     KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
 
-        auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
 
-          if (k >= int_kb.s && k <= int_kb.e && j >= int_jb.s && j <= int_jb.e &&
-                i >= int_ib.s && i <= int_ib.e) {
           
             cons(IEN, k, j, i) -= frame_v * cons(IM2, k, j, i);
-            cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * prim(IDN, k, j, i);
-            cons(IM2, k, j, i) -= frame_v * prim(IDN, k, j, i);
-            assert(("Negative densities after frame boost", prim(IDN, k, j, i) < 0.));
+            cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * cons(IDN, k, j, i);
+            cons(IM2, k, j, i) -= frame_v * cons(IDN, k, j, i);
+            assert(("Negative densities after frame boost", cons(IDN, k, j, i) < 0.));
 
-         }
+         
       });
 
-    return TaskStatus::complete; //compute only every 100 timesteps
-  // output prior to every output
+
+  
 }
 
 } // namespace cloud
