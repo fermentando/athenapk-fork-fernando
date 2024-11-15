@@ -65,6 +65,7 @@ int main(int argc, char *argv[]) {
     pman.app_input->ProblemGenerator = cloud::ProblemGenerator;
     pman.app_input->boundary_conditions[parthenon::BoundaryFace::inner_x2] =
         cloud::InflowWindX2;
+    Hydro::ProblemInitPackageData = cloud::ProblemInitPackageData;
     Hydro::ProblemSourceFirstOrder = cloud::FrameBoosting;
     Hydro::ProblemCheckRefinementBlock = cloud::ProblemCheckRefinementBlock;
   } else if (problem == "blast") {

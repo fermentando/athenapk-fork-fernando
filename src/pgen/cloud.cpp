@@ -32,10 +32,13 @@
 namespace cloud {
 using namespace parthenon::driver::prelude;
 
+
 Real rho_wind, mom_wind, rhoe_wind, r_cloud, rho_cloud;
 Real Bx = 0.0;
 Real By = 0.0;
 Real Bz = 0.0;
+
+
 
 //========================================================================================
 //! \fn void InitUserMeshData(Mesh *mesh, ParameterInput *pin)
@@ -396,4 +399,70 @@ void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::Si
   ApplyFrameBoost(md);
 
                          }
+
+//----------------------------------------------------------------------------------------
+//! \fn void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg)
+//  \brief Hst file initialiser for new variables
+
+// TODO(?) until we are able to process multiple variables in a single hst function call
+// we'll use this enum to identify the various vars.
+enum class HstQuan { mc};
+
+// Compute the local sum of cloud mass
+template <HstQuan hst_quan>
+Real CloudHst(MeshData<Real> *md) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
+  //const auto units = hydro_pkg->Param<Units>("units");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
+
+  const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+
+  //Real mass_cgs_factor = 1./ units.code_mass_cgs();
+
+  // after this function is called the result is MPI_SUMed across all procs/meshblocks
+  // thus, we're only concerned with local sums
+  Real sum;
+
+  pmb->par_reduce(
+      "hst_cloud", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+        const auto &prim = prim_pack(b);
+        const auto &coords = prim_pack.GetCoords(b);
+
+
+        if (hst_quan == HstQuan::mc) { // Ms
+
+          const Real temp =
+              mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+
+          if (temp <= 2*T_cloud) {
+            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+        }
+
+      },
+      sum);
+
+  return sum;
+}
+
+void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg) {
+  // Step 1. Enlist history output information
+  auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
+
+
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    CloudHst<HstQuan::mc>, "Mcloud (code units)"));
+
+  
+  pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
+
+}
 } // namespace cloud
