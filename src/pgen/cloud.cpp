@@ -290,8 +290,7 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
 };
 
 // Compute frame_boosting velocity
-void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
-                         const Real dt) {
+void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
 
   using parthenon::IndexDomain;
   using parthenon::IndexRange;
@@ -305,10 +304,13 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md, const
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
 
+  //const auto x2centre = (pmesh->mesh_size.xmax(X2DIR) + pmesh->mesh_size.xmin(X2DIR))/2;
+
 
   const auto units = hydro_pkg->Param<Units>("units");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
+  Real frame_v;
 
   Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
 
@@ -318,7 +320,7 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md, const
       Real& local_IM_cold_gas, Real& local_cold_gas) { 
         auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
-        if ( coords.Xc<2>(j) < 0 ) {
+        //if ( coords.Xc<2>(j) < x2centre ) {
           const Real temp =
               mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
 
@@ -327,18 +329,22 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md, const
                   local_IM_cold_gas += cons(IM2, k, j, i);// * coords.CellVolume(k, j, i);
                   local_cold_gas += cons(IDN, k, j, i); //* coords.CellVolume(k, j, i);
           }
-        }
+        //}
       },
-      sums[0], sums[1]); //parthenon_output
+      Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1])); //parthenon_output
 #ifdef MPI_PARALLEL
   // Sum the perturbations over all processors
   PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 2, MPI_PARTHENON_REAL,
                                     MPI_SUM, MPI_COMM_WORLD));
 #endif // MPI_PARALLEL
-  
-  Real frame_v = sums[0]/sums[1];
-  printf("Computed frame boost: %.f \n",frame_v);
-  if (frame_v != 0.) hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
+  printf("values of sum 0 (%.5e) and sum 1 (%.5e)", sums[0], sums[1]);
+  if (sums[1] > 0. && sums[0] > 0.) {
+  frame_v = sums[0]/sums[1];
+  } else {
+  frame_v = 0.;
+  }
+  printf("Computed frame boost: %.5e \n",frame_v);
+  hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
 
 
 
@@ -347,8 +353,7 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md, const
 
 
 // Shift velocities to maintain intertial frame
-void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
-                         const Real dt) {
+void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md) {
 
   using parthenon::IndexDomain;
   using parthenon::IndexRange;
@@ -363,10 +368,10 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md, const parthenon::
 
 
   Real frame_v = hydro_pkg->Param<Real>("inertial_frame_v");
+  
   if (fabs(frame_v) > 100.01 || frame_v < 0.0) frame_v = 0.;
 
-
-  
+ 
   Kokkos::parallel_for(
     "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),  
     KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
@@ -382,8 +387,13 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md, const parthenon::
          
       });
 
-    printf("Frame boosted by : %.f \n",frame_v);
+    printf("Frame boosted by : %.5e \n",frame_v);
   
 }
+void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
+                         const Real dt){
+  ComputeCloudMassWeightedVel(md);
+  ApplyFrameBoost(md);
 
+                         }
 } // namespace cloud
