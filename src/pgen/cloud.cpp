@@ -199,19 +199,23 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
 
   // initialize conserved variables
-  //auto &coords = pmb->coords;
   auto &mbd = pmb->meshblock_data.Get();
   auto const &cons = md->PackVariables(std::vector<std::string>{"cons"});
-  //auto &u_dev = mbd->Get("cons").data;
+
 
   //Quantities to initialise
   int Nq = 4;
 
-  // initializing on host
-  //auto u = u_dev.GetHostMirrorAndCopy();
-
 // Read ICs binary
-  std::ifstream infile("/home/fernando/TestRuns/ICs.bin",  std::ios::in | std::ios::binary);
+  const size_t size_buf = 1024;
+  char buffer[size_buf];  
+  if (getcwd(buffer, size_buf) == nullptr) {
+    std::cout << "Error getting current working directory" << std::endl;
+  }else{
+    std::cout << "This is the cwd: " << buffer << std::endl;
+  }
+
+  std::ifstream infile(std::string(buffer) +"/ICs.bin",  std::ios::in | std::ios::binary);
   if (!infile.is_open()) {
       PARTHENON_FAIL("Failed to open ICs bin file.");
   }
@@ -260,16 +264,15 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
     });
   
-  // copy initialized vars to device
-  //u_dev.DeepCopy(u);
   
 }
+
+
 
 
 void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
   auto cons = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
-  // TODO(pgrete) Add par_for_bndry to Parthenon without requiring nb
   const auto nb = IndexRange{0, 0};
   const auto rho_wind_ = rho_wind;
   const auto mom_wind_ = mom_wind;
@@ -299,6 +302,8 @@ void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
       });
 }
 
+
+
 parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
   auto pmb = mbd->GetBlockPointer();
   auto w = mbd->Get("prim").data;
@@ -323,6 +328,13 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
   if (maxscalar < 0.001) return parthenon::AmrTag::derefine;
   return parthenon::AmrTag::same;
 };
+
+//========================================================================================
+//! \fn void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md)
+//  \brief Function to initialize problem-specific data in mesh class.  Can also be used
+//  to initialize variables which are global to (and therefore can be passed to) other
+//  functions in this file.  Called in Mesh constructor.
+//========================================================================================
 
 // Compute frame_boosting velocity
 void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
@@ -361,30 +373,27 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
 
           if (temp <= 2*T_cloud) {
 
-                  local_IM_cold_gas += cons(IM2, k, j, i);// * coords.CellVolume(k, j, i);
-                  local_cold_gas += cons(IDN, k, j, i); //* coords.CellVolume(k, j, i);
+                  local_IM_cold_gas += cons(IM2, k, j, i);
+                  local_cold_gas += cons(IDN, k, j, i); 
           }
         //}
       },
-      Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1])); //parthenon_output
+      Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1])); 
 #ifdef MPI_PARALLEL
   // Sum the perturbations over all processors
   PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 2, MPI_PARTHENON_REAL,
                                     MPI_SUM, MPI_COMM_WORLD));
 #endif // MPI_PARALLEL
-  printf("values of sum 0 (%.5e) and sum 1 (%.5e)", sums[0], sums[1]);
+
   if (sums[1] > 0. && sums[0] > 0.) {
   frame_v = sums[0]/sums[1];
   } else {
   frame_v = 0.;
   }
-  printf("Computed frame boost: %.5e \n",frame_v);
   hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
 
-
-
-
 }
+
 
 
 // Shift velocities to maintain intertial frame
@@ -417,12 +426,10 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md) {
             cons(IEN, k, j, i) -= frame_v * cons(IM2, k, j, i);
             cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * cons(IDN, k, j, i);
             cons(IM2, k, j, i) -= frame_v * cons(IDN, k, j, i);
-            assert(("Negative densities after frame boost", cons(IDN, k, j, i) < 0.));
     
          
       });
 
-    printf("Frame boosted by : %.5e \n",frame_v);
   
 }
 void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
@@ -432,13 +439,15 @@ void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::Si
 
                          }
 
+
+
 //----------------------------------------------------------------------------------------
 //! \fn void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg)
 //  \brief Hst file initialiser for new variables
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
 // we'll use this enum to identify the various vars.
-enum class HstQuan { mc};
+enum class HstQuan {mc};
 
 // Compute the local sum of cloud mass
 template <HstQuan hst_quan>
@@ -446,7 +455,6 @@ Real CloudHst(MeshData<Real> *md) {
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
-  //const auto units = hydro_pkg->Param<Units>("units");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
 
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
@@ -455,8 +463,6 @@ Real CloudHst(MeshData<Real> *md) {
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
 
-
-  //Real mass_cgs_factor = 1./ units.code_mass_cgs();
 
   // after this function is called the result is MPI_SUMed across all procs/meshblocks
   // thus, we're only concerned with local sums
@@ -469,16 +475,13 @@ Real CloudHst(MeshData<Real> *md) {
         const auto &coords = prim_pack.GetCoords(b);
 
 
-        if (hst_quan == HstQuan::mc) { // Ms
-
-          const Real temp =
-              mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+        if (hst_quan == HstQuan::mc) { 
+          const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
 
           if (temp <= 2*T_cloud) {
             lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
           }
         }
-
       },
       sum);
 
@@ -486,15 +489,11 @@ Real CloudHst(MeshData<Real> *md) {
 }
 
 void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg) {
-  // Step 1. Enlist history output information
+
   auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
-
-
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     CloudHst<HstQuan::mc>, "Mcloud (code units)"));
-
-  
   pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
 
-}
+  }
 } // namespace cloud
