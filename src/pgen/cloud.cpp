@@ -171,7 +171,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   Units units(pin);
   auto d_cgs_factor = 1. / units.code_density_cgs();
   auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
-  auto e_cgs_factor = 1. / (m_cgs_factor*m_cgs_factor / units.code_density_cgs());
+  auto e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
 
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
@@ -207,6 +207,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   int Nq = 4;
 
 // Read ICs binary
+/*
   const size_t size_buf = 1024;
   char buffer[size_buf];  
   if (getcwd(buffer, size_buf) == nullptr) {
@@ -214,11 +215,12 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   }else{
     std::cout << "This is the cwd: " << buffer << std::endl;
   }
-
-  std::ifstream infile(std::string(buffer) +"/ICs.bin",  std::ios::in | std::ios::binary);
+*/
+  std::ifstream infile("ICs.bin",  std::ios::in | std::ios::binary);
   if (!infile.is_open()) {
       PARTHENON_FAIL("Failed to open ICs bin file.");
   }
+  
 
 
   //View for ICs Kokkos initialization
