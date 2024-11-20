@@ -20,6 +20,7 @@ project(athenaPK LANGUAGES CXX)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
+
 # make paths in target_source() absolute
 # used for sources in src/pgen folder
 # new behavior introduces in CMake 3.13 that's why this is the min. version above

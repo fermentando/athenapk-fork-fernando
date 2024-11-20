@@ -186,7 +186,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         Real mom;
         // Factor 1.3 as used in Grønnow, Tepper-García, & Bland-Hawthorn 2018,
         // i.e., outside the cloud boundary region (for steepness 10)
-        if (rad > 1.3 * r_cloud) {
+        if (rad < -1.5 * r_cloud) {
           mom = mom_wind;
         } else {
           mom = 0.0;
