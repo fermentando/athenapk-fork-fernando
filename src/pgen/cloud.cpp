@@ -188,6 +188,8 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   const auto Ncellx2 = pmesh->mesh_size.nx(X2DIR);
   const auto Ncellx3 = pmesh->mesh_size.nx(X3DIR);
 
+  printf("Dimensions of interior domain: %d, %d, %d", Ncellx1, Ncellx2, Ncellx3);
+
 
   const auto lsizex1 = (pmesh->mesh_size.xmax(X1DIR) - pmesh->mesh_size.xmin(X1DIR))/Ncellx1;
   const auto lsizex2 = (pmesh->mesh_size.xmax(X2DIR) - pmesh->mesh_size.xmin(X2DIR))/Ncellx2;
@@ -263,6 +265,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
       u(IDN, k, j, i) = ICsdata(indexDN)* d_cgs_factor;
       u(IM2, k, j, i) =  ICsdata(indexM2)* m_cgs_factor;
       u(IEN, k, j, i) =  (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor;
+      if (j == jb.s) printf("Initial energy of cells: %e \n", (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor);
 
     });
   
