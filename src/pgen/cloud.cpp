@@ -264,9 +264,8 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
       u(IDN, k, j, i) = ICsdata(indexDN)* d_cgs_factor;
       u(IM2, k, j, i) =  ICsdata(indexM2)* m_cgs_factor;
-      u(IEN, k, j, i) =  (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor;
-      if (j == jb.s) printf("Initial energy of cells: %e \n", (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor);
-
+      u(IEN, k, j, i) =  ICsdata(indexIEN1)* e_cgs_factor + ICsdata(indexIEN2)/mbar_over_kb *d_cgs_factor ;
+      //if (j == kb.s) printf("Initial density, momm and energy of cells: %e, %e, %e \n", ICsdata(indexDN)* d_cgs_factor, ICsdata(indexM2)* m_cgs_factor, (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor);
     });
   
   
