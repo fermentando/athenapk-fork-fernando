@@ -186,8 +186,8 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         Real mom;
         // Factor 1.3 as used in Grønnow, Tepper-García, & Bland-Hawthorn 2018,
         // i.e., outside the cloud boundary region (for steepness 10)
-        if (rad < -1.5 * r_cloud) {
-          mom = mom_wind;
+        if (rad < r_cloud) {
+          mom = 0.0;
         } else {
           mom = 0.0;
         }
@@ -196,6 +196,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         u(IM2, k, j, i) = mom;
         // Can use rhoe_wind here as simulation is setup in pressure equil.
         u(IEN, k, j, i) = rhoe_wind + 0.5 * mom * mom / rho;
+        if (j == kb.s) printf("Initial density, momm and energy of cells: %e, %e, %e \n", rho, mom, rhoe_wind + 0.5 * mom * mom / rho);
 
         if (mhd_enabled) {
           u(IB1, k, j, i) = Bx;
