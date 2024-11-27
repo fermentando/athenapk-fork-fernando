@@ -1,0 +1,21 @@
+### PARTHENON ERROR
+  Message:     ### FATAL ERROR in function [IOWrapper:Open]
+Input file 'bin_cloud.in' could not be opened
+
+  File:        /home/fernando/athenapk-fork-fernando/external/parthenon/src/outputs/io_wrapper.cpp
+  Line number: 54
+### FATAL ERROR in function [IOWrapper:Open]
+Input file 'bin_cloud.in' could not be opened
+
+Backtrace:
+[0x5654a44e9ba9] 
+[0x5654a44d5fc0] 
+[0x5654a3a9687c] 
+[0x5654a3e0796f] 
+[0x5654a42425b0] 
+[0x5654a42f41ba] 
+[0x5654a42fd097] 
+[0x5654a39bdf2c] 
+[0x7f6a8561ed90] 
+[0x7f6a8561ee40] __libc_start_main
+[0x5654a3a49af5] 
