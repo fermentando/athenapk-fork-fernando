@@ -262,15 +262,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   int Nq = 4;
 
 // Read ICs binary
-/*
-  const size_t size_buf = 1024;
-  char buffer[size_buf];  
-  if (getcwd(buffer, size_buf) == nullptr) {
-    std::cout << "Error getting current working directory" << std::endl;
-  }else{
-    std::cout << "This is the cwd: " << buffer << std::endl;
-  }
-*/
+
   std::ifstream infile("ICs.bin",  std::ios::in | std::ios::binary);
   if (!infile.is_open()) {
       PARTHENON_FAIL("Failed to open ICs bin file.");
