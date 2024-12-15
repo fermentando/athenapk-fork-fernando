@@ -28,7 +28,7 @@
 #include "../units.hpp"
 #include "../eos/adiabatic_glmmhd.hpp"
 #include "../eos/adiabatic_hydro.hpp"
-#include "cloud.hpp"
+
 
 
 namespace cloud {
@@ -121,13 +121,13 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   rho_cloud = pin->GetReal("problem/cloud", "rho_cloud_cgs") / units.code_density_cgs();
   rho_wind = pin->GetReal("problem/cloud", "rho_wind_cgs") / units.code_density_cgs();
   auto T_wind = pin->GetReal("problem/cloud", "T_wind_cgs");
-  auto v_wind = pin->GetReal("problem/cloud", "v_wind_cgs") /
-                (units.code_length_cgs() / units.code_time_cgs());
+  auto Mach_wind = pin->GetReal("problem/cloud", "Mach_wind");
 
   // mu_mh_gm1_by_k_B is already in code units
   rhoe_wind = T_wind * rho_wind / mbar_over_kb / gm1;
   const auto c_s_wind = std::sqrt(gamma * gm1 * rhoe_wind / rho_wind);
   const auto chi_0 = rho_cloud / rho_wind;               // cloud to wind density ratio
+  const auto v_wind = c_s_wind * Mach_wind;
   const auto t_cc = r_cloud * std::sqrt(chi_0) / v_wind; // cloud crushting time (code)
   const auto pressure =
       gm1 * rhoe_wind; // one value for entire domain given initial pressure equil.
@@ -241,7 +241,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   const auto Ncellx2 = pmesh->mesh_size.nx(X2DIR);
   const auto Ncellx3 = pmesh->mesh_size.nx(X3DIR);
 
-  printf("Dimensions of interior domain: %d, %d, %d", Ncellx1, Ncellx2, Ncellx3);
+  printf("Dimensions of interior domain: %d, %d, %d. \n", Ncellx1, Ncellx2, Ncellx3);
 
 
   const auto lsizex1 = (pmesh->mesh_size.xmax(X1DIR) - pmesh->mesh_size.xmin(X1DIR))/Ncellx1;
@@ -261,17 +261,25 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   //Quantities to initialise
   int Nq = 4;
 
+
 // Read ICs binary
 
   std::ifstream infile("ICs.bin",  std::ios::in | std::ios::binary);
   if (!infile.is_open()) {
       PARTHENON_FAIL("Failed to open ICs bin file.");
   }
-  
 
+  
 
   //View for ICs Kokkos initialization
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
+
+    if (infile.gcount() != size * sizeof(double)) {
+    std::cerr << "Error: Mismatch in expected and read sizes. Read size: " 
+              << infile.gcount() << ", Expected size: " << size * sizeof(double) 
+              << std::endl;
+    PARTHENON_FAIL("Binary file read failed or corrupted.");
+}
   typedef Kokkos::View<double*> BinArr;
   BinArr ICsdata("data", size); 
   BinArr::HostMirror hICs = Kokkos::create_mirror_view(ICsdata);
