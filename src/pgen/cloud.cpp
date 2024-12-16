@@ -289,6 +289,13 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
   return parthenon::AmrTag::same;
 };
 
+//========================================================================================
+//! \fn void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md)
+//  \brief Function to initialize problem-specific data in mesh class.  Can also be used
+//  to initialize variables which are global to (and therefore can be passed to) other
+//  functions in this file.  Called in Mesh constructor.
+//========================================================================================
+
 // Compute frame_boosting velocity
 void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
 
@@ -308,7 +315,7 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
 
 
   const auto units = hydro_pkg->Param<Units>("units");
-  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("singlecloud::mean_molecular_mass_by_kb");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
   Real frame_v;
 
@@ -326,30 +333,27 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
 
           if (temp <= 2*T_cloud) {
 
-                  local_IM_cold_gas += cons(IM2, k, j, i);// * coords.CellVolume(k, j, i);
-                  local_cold_gas += cons(IDN, k, j, i); //* coords.CellVolume(k, j, i);
+                  local_IM_cold_gas += cons(IM2, k, j, i);
+                  local_cold_gas += cons(IDN, k, j, i); 
           }
         //}
       },
-      Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1])); //parthenon_output
+      Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1])); 
 #ifdef MPI_PARALLEL
   // Sum the perturbations over all processors
   PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 2, MPI_PARTHENON_REAL,
                                     MPI_SUM, MPI_COMM_WORLD));
 #endif // MPI_PARALLEL
-  printf("values of sum 0 (%.5e) and sum 1 (%.5e)", sums[0], sums[1]);
+
   if (sums[1] > 0. && sums[0] > 0.) {
   frame_v = sums[0]/sums[1];
   } else {
   frame_v = 0.;
   }
-  printf("Computed frame boost: %.5e \n",frame_v);
   hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
 
-
-
-
 }
+
 
 
 // Shift velocities to maintain intertial frame
@@ -382,12 +386,10 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md) {
             cons(IEN, k, j, i) -= frame_v * cons(IM2, k, j, i);
             cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * cons(IDN, k, j, i);
             cons(IM2, k, j, i) -= frame_v * cons(IDN, k, j, i);
-            assert(("Negative densities after frame boost", cons(IDN, k, j, i) < 0.));
     
          
       });
 
-    printf("Frame boosted by : %.5e \n",frame_v);
   
 }
 void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
