@@ -66,6 +66,8 @@ TabularCooling::TabularCooling(ParameterInput *pin,
   d_e_tol_ = pin->GetOrAddReal("cooling", "d_e_tol", 1e-8);
   // negative means disabled
   T_floor_ = pin->GetOrAddReal("hydro", "Tfloor", -1.0);
+  T_ceil_ = pin->GetOrAddReal("hydro", "Tceil", -1.0);
+  printf("This is T_ceil: %g", T_ceil_);
 
   std::stringstream msg;
 
@@ -313,6 +315,12 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
 
   const Real internal_e_floor = temp_floor / mbar_gm1_over_kb; // specific internal en.
 
+  // Determine the cooling ceiling
+  const auto temp_cool_ceil = std::pow(10.0, log_temp_final_); // high end of cool table
+  const Real temp_ceil = ((T_ceil_ < temp_cool_floor) && (T_ceil_ > 0)) ? T_ceil_ : temp_cool_ceil;
+
+  const Real internal_e_ceil = temp_ceil / mbar_gm1_over_kb; 
+
   // Grab some necessary variables
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
   const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
@@ -358,7 +366,8 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
         // Check if cooling is actually happening, e.g., when T below T_cool_min or if
         // temperature is already below floor.
         const Real dedt_initial = DeDt_wrapper(0.0, internal_e_initial, dedt_valid);
-        if (dedt_initial == 0.0 || internal_e_initial <= internal_e_floor) {
+        if (dedt_initial == 0.0 || internal_e_initial <= internal_e_floor || internal_e_initial >= internal_e_ceil) {
+          printf("NOT COOLING ABOVE 1E6 K");
           return;
         }
 
@@ -506,7 +515,9 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto Y_k = townsend_Y_k_;
 
   const auto internal_e_floor = T_floor_ / mbar_gm1_over_kb;
+  const auto internal_e_ceil = T_ceil_ / mbar_gm1_over_kb;
   const auto temp_cool_floor = std::pow(10.0, log_temp_start_); // low end of cool table
+  const auto temp_cool_ceil = std::pow(10.0, log_temp_final_); // high end of cool table
 
   // Grab some necessary variables
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
@@ -557,7 +568,7 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         auto temp = mbar_gm1_over_kb * internal_e;
         // Temperature is above floor (see conditional above) but below cooling table:
         // -> no cooling
-        if (temp < temp_cool_floor) {
+        if ((temp < temp_cool_floor) && (temp > temp_cool_ceil)) {
           return;
         }
         const Real n_h2_by_rho = rho * X_by_mh2;

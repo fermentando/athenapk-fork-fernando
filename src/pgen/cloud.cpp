@@ -180,16 +180,18 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         const Real z = coords.Xc<3>(k);
         const Real rad = std::sqrt(SQR(x) + SQR(y) + SQR(z));
 
-        Real rho = rho_wind + 0.5 * (rho_cloud - rho_wind) *
-                                  (1.0 - std::tanh(steepness * (rad / r_cloud - 1.0)));
+        Real rho; // = rho_wind + 0.5 * (rho_cloud - rho_wind) *
+                   //               (1.0 - std::tanh(steepness * (rad / r_cloud - 1.0)));
 
         Real mom;
         // Factor 1.3 as used in Grønnow, Tepper-García, & Bland-Hawthorn 2018,
         // i.e., outside the cloud boundary region (for steepness 10)
         if (rad < r_cloud) {
           mom = 0.0;
+          rho = rho_cloud;
         } else {
           mom = 0.0;
+          rho = rho_wind;
         }
 
         u(IDN, k, j, i) = rho;
