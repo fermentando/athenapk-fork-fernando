@@ -67,7 +67,7 @@ TabularCooling::TabularCooling(ParameterInput *pin,
   // negative means disabled
   T_floor_ = pin->GetOrAddReal("hydro", "Tfloor", -1.0);
   T_ceil_ = pin->GetOrAddReal("hydro", "Tceil", -1.0);
-  printf("This is T_ceil: %g", T_ceil_);
+  printf("This is T_ceil: %g \n", T_ceil_);
 
   std::stringstream msg;
 
@@ -317,7 +317,7 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
 
   // Determine the cooling ceiling
   const auto temp_cool_ceil = std::pow(10.0, log_temp_final_); // high end of cool table
-  const Real temp_ceil = ((T_ceil_ < temp_cool_floor) && (T_ceil_ > 0)) ? T_ceil_ : temp_cool_ceil;
+  const Real temp_ceil = ((T_ceil_ < temp_cool_ceil) && (T_ceil_ > 0)) ? T_ceil_ : temp_cool_ceil;
 
   const Real internal_e_ceil = temp_ceil / mbar_gm1_over_kb; 
 
@@ -367,7 +367,6 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
         // temperature is already below floor.
         const Real dedt_initial = DeDt_wrapper(0.0, internal_e_initial, dedt_valid);
         if (dedt_initial == 0.0 || internal_e_initial <= internal_e_floor || internal_e_initial >= internal_e_ceil) {
-          printf("NOT COOLING ABOVE 1E6 K");
           return;
         }
 
@@ -518,6 +517,8 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto internal_e_ceil = T_ceil_ / mbar_gm1_over_kb;
   const auto temp_cool_floor = std::pow(10.0, log_temp_start_); // low end of cool table
   const auto temp_cool_ceil = std::pow(10.0, log_temp_final_); // high end of cool table
+  const auto temp_ceil = ((T_ceil_ < temp_cool_ceil) && (T_ceil_ > 0.)) ? T_ceil_ : temp_cool_ceil;
+
 
   // Grab some necessary variables
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
@@ -568,7 +569,7 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         auto temp = mbar_gm1_over_kb * internal_e;
         // Temperature is above floor (see conditional above) but below cooling table:
         // -> no cooling
-        if ((temp < temp_cool_floor) && (temp > temp_cool_ceil)) {
+        if ((temp < temp_cool_floor) || (temp >= temp_ceil)) {
           return;
         }
         const Real n_h2_by_rho = rho * X_by_mh2;
@@ -591,7 +592,7 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
             tef + lambda_final * dt / temp_final * mbar_gm1_over_kb * n_h2_by_rho;
 
         // TEF is a strictly decreasing function and new_tef > tef
-        // Check if the new TEF falls into a lower bin, i.e., find the right bin for A7
+        // Check if the new TEF falls into a lower bin, i.e., find the right bin for A/T7
         // If so, update slopes and coefficients
         while ((idx > 0) && (tef_adj > Y_k(idx))) {
           idx -= 1;
@@ -636,6 +637,11 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
 
   const Real internal_e_floor = temp_floor / mbar_gm1_over_kb; // specific internal en.
 
+  const auto temp_cool_ceil = std::pow(10.0, log_temp_final_); // low end of cool table
+  const Real temp_ceil = (T_ceil_ > temp_cool_ceil) ? T_ceil_ : temp_cool_ceil;
+
+  const Real internal_e_ceil = temp_ceil/ mbar_gm1_over_kb; // specific internal en.
+
   // Grab some necessary variables
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
@@ -664,7 +670,7 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
         // Compute cooling time
         // If de_dt is zero (temperature is smaller than lower end of cooling table) or
         // current temp is below floor, use infinite cooling time
-        const Real cooling_time = ((de_dt == 0) || (internal_e < internal_e_floor))
+        const Real cooling_time = ((de_dt == 0) || (internal_e < internal_e_floor) || (internal_e > internal_e_ceil))
                                       ? std::numeric_limits<Real>::infinity()
                                       : fabs(internal_e / de_dt);
 
