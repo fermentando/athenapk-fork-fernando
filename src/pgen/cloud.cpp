@@ -67,7 +67,6 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   // mu_mh_gm1_by_k_B is already in code units
   rhoe_wind = T_wind * rho_wind / mbar_over_kb / gm1;
   const auto c_s_wind = std::sqrt(gamma * gm1 * rhoe_wind / rho_wind);
-  const auto v_wind = c_s_wind * Mach_wind;
   const auto chi_0 = rho_cloud / rho_wind;               // cloud to wind density ratio
   const auto v_wind = c_s_wind * Mach_wind;
   const auto t_cc = r_cloud * std::sqrt(chi_0) / v_wind; // cloud crushting time (code)
