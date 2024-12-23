@@ -22,6 +22,7 @@
 #include <parthenon/package.hpp>
 #include <random>
 #include <sstream>
+#include <globals.hpp>
 
 // AthenaPK headers
 #include "../main.hpp"
@@ -32,6 +33,7 @@
 
 
 namespace cloud {
+using namespace parthenon;
 using namespace parthenon::driver::prelude;
 using namespace parthenon::package::prelude;
 
@@ -43,6 +45,14 @@ Real Bz = 0.0;
 
 
 
+
+
+//========================================================================================
+//! \fn void InitUserMeshData(Mesh *mesh, ParameterInput *pin)
+//  \brief Function to initialize problem-specific data in mesh class.  Can also be used
+//  to initialize variables which are global to (and therefore can be passed to) other
+//  functions in this file.  Called in Mesh constructor.
+//========================================================================================
 //----------------------------------------------------------------------------------------
 //! \fn void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg)
 //  \brief Hst file initialiser for new variables
@@ -99,14 +109,6 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
 
   }
 
-
-
-//========================================================================================
-//! \fn void InitUserMeshData(Mesh *mesh, ParameterInput *pin)
-//  \brief Function to initialize problem-specific data in mesh class.  Can also be used
-//  to initialize variables which are global to (and therefore can be passed to) other
-//  functions in this file.  Called in Mesh constructor.
-//========================================================================================
 
 void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   // no access to package in this function so we use a local units object
@@ -213,6 +215,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
     std::cout << msg.str();
   }
+
+  // Check if frame boosting is on
+  //BoostBool = pin->GetOrAddBoolean("problem/cloud", "frame_boost", false);
 }
 
 //----------------------------------------------------------------------------------------
@@ -222,6 +227,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
   Units units(pin);
+
+  const std::string ics_filename = pin->GetString("job", "bin_input_file");
+
   auto d_cgs_factor = 1. / units.code_density_cgs();
   auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
   auto e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
@@ -258,45 +266,60 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   auto const &cons = md->PackVariables(std::vector<std::string>{"cons"});
 
 
-  //Quantities to initialise
+  // Quantities to initialize
   int Nq = 4;
 
-
-// Read ICs binary
-
-  std::ifstream infile("ICs.bin",  std::ios::in | std::ios::binary);
-  if (!infile.is_open()) {
-      PARTHENON_FAIL("Failed to open ICs bin file.");
-  }
-
-  
-
-  //View for ICs Kokkos initialization
+  // View for ICs Kokkos initialization
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
-
-    if (infile.gcount() != size * sizeof(double)) {
-    std::cerr << "Error: Mismatch in expected and read sizes. Read size: " 
-              << infile.gcount() << ", Expected size: " << size * sizeof(double) 
-              << std::endl;
-    PARTHENON_FAIL("Binary file read failed or corrupted.");
-}
   typedef Kokkos::View<double*> BinArr;
   BinArr ICsdata("data", size); 
   BinArr::HostMirror hICs = Kokkos::create_mirror_view(ICsdata);
 
+  // Read ICs binary using IOWrapper
+  parthenon::IOWrapper input;
+  input.Open(ics_filename.c_str(), parthenon::IOWrapper::FileMode::read);
 
-  //Get data from Binary
-  std::vector<double> temp_data(size);
-  
-  infile.read(reinterpret_cast<char*>(temp_data.data()), size * sizeof(double));
-  infile.close();
+  const int bufsize = 4096;
+  auto buf = std::make_unique<char[]>(bufsize); // Use smart pointers for safety
+  size_t bytes_read = 0;
+  size_t total_bytes = size * sizeof(double);
+  size_t doubles_read = 0;
 
-  for (size_t i = 0; i < size; ++i) {
-    hICs(i) = temp_data[i];
+  while (bytes_read < total_bytes) {
+      size_t bytes_to_read = std::min(static_cast<size_t>(bufsize), total_bytes - bytes_read);
+
+      size_t ret;
+      if (Globals::my_rank == 0) { // Only the master process reads the ICs file
+          ret = input.Read(buf.get(), sizeof(char), bytes_to_read);
+      }
+#ifdef MPI_PARALLEL
+      // Broadcast the size and buffer content
+      MPI_Bcast(&ret, sizeof(size_t), MPI_BYTE, 0, MPI_COMM_WORLD);
+      MPI_Bcast(buf.get(), ret, MPI_BYTE, 0, MPI_COMM_WORLD);
+#endif
+      if (ret == 0) break; // End of file or read error
+
+      size_t doubles_to_read = ret / sizeof(double);
+      if (doubles_read + doubles_to_read > size) {
+          PARTHENON_FAIL("File contains more data than expected dimensions.");
+      }
+
+      std::memcpy(hICs.data() + doubles_read, buf.get(), doubles_to_read * sizeof(double));
+      doubles_read += doubles_to_read;
+      bytes_read += ret;
   }
 
-  //Pass data onto dev memory space 
+  input.Close();
+
+  // Check if the total number of elements matches the expected size
+  if (doubles_read != size) {
+      PARTHENON_FAIL("File size does not match expected dimensions. Expected " + std::to_string(size) + " doubles but read " + std::to_string(doubles_read) + " doubles.");
+  }
+
+  // Pass data onto device memory space 
   Kokkos::deep_copy(ICsdata, hICs);
+
+  std::cout << "Initialized ICs data of size: " << size << " elements." << std::endl;
 
   
   // Assign values to primary variables
@@ -491,6 +514,7 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md) {
 }
 void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
                          const Real dt){
+
   ComputeCloudMassWeightedVel(md);
   ApplyFrameBoost(md);
 
