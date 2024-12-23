@@ -206,6 +206,9 @@ class TabularCooling {
   // table), whichever temperature is higher
   parthenon::Real T_floor_;
 
+  // Temperature ceiling
+  parthenon::Real T_ceil_;
+
   // Maximum number of iterations/subcycles
   unsigned int max_iter_;
 
