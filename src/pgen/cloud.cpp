@@ -29,7 +29,7 @@
 #include "../units.hpp"
 #include "../eos/adiabatic_glmmhd.hpp"
 #include "../eos/adiabatic_hydro.hpp"
-#include "cloud.hpp"
+
 
 
 namespace cloud {
@@ -37,10 +37,15 @@ using namespace parthenon;
 using namespace parthenon::driver::prelude;
 using namespace parthenon::package::prelude;
 
+
 Real rho_wind, mom_wind, rhoe_wind, r_cloud, rho_cloud;
 Real Bx = 0.0;
 Real By = 0.0;
 Real Bz = 0.0;
+
+
+
+
 
 //========================================================================================
 //! \fn void InitUserMeshData(Mesh *mesh, ParameterInput *pin)
@@ -48,6 +53,62 @@ Real Bz = 0.0;
 //  to initialize variables which are global to (and therefore can be passed to) other
 //  functions in this file.  Called in Mesh constructor.
 //========================================================================================
+//----------------------------------------------------------------------------------------
+//! \fn void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg)
+//  \brief Hst file initialiser for new variables
+
+// TODO(?) until we are able to process multiple variables in a single hst function call
+// we'll use this enum to identify the various vars.
+enum class HstQuan {mc};
+
+// Compute the local sum of cloud mass
+template <HstQuan hst_quan>
+Real CloudHst(MeshData<Real> *md) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+
+  // after this function is called the result is MPI_SUMed across all procs/meshblocks
+  // thus, we're only concerned with local sums
+  Real sum;
+
+  pmb->par_reduce(
+      "hst_cloud", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+        const auto &cons = cons_pack(b);
+        const auto &coords = cons_pack.GetCoords(b);
+
+
+        if (hst_quan == HstQuan::mc) { 
+          const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+
+          if (temp <= 2*T_cloud) {
+            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+        }
+      },
+      sum);
+
+  return sum;
+}
+
+void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg) {
+
+  auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    CloudHst<HstQuan::mc>, "Mcloud (code units)"));
+  pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
+
+  }
+
 
 void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   // no access to package in this function so we use a local units object
@@ -96,12 +157,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
     }
   }
 
-  const parthenon::Real He_mass_fraction = pin->GetReal("hydro", "He_mass_fraction");
-  const parthenon::Real H_mass_fraction = 1.0 - He_mass_fraction;
-  const parthenon::Real mu =
-      1 / (He_mass_fraction * 3. / 4. + (1 - He_mass_fraction) * 2);
 
-  pkg -> AddParam<Real>("singlecloud::mean_molecular_mass_by_kb", mu * units.atomic_mass_unit() / units.k_boltzmann());
   //Set frame speed as mutable
   pkg->AddParam<Real>("inertial_frame_v", 0., true);
   pkg -> AddParam<Real>("Tcloud", T_cloud);
@@ -159,6 +215,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
     std::cout << msg.str();
   }
+
+  // Check if frame boosting is on
+  //BoostBool = pin->GetOrAddBoolean("problem/cloud", "frame_boost", false);
 }
 
 //----------------------------------------------------------------------------------------
@@ -173,7 +232,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
   auto d_cgs_factor = 1. / units.code_density_cgs();
   auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
-  auto e_cgs_factor = 1. / (m_cgs_factor*m_cgs_factor / units.code_density_cgs());
+  auto e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
 
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
@@ -190,6 +249,8 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   const auto Ncellx2 = pmesh->mesh_size.nx(X2DIR);
   const auto Ncellx3 = pmesh->mesh_size.nx(X3DIR);
 
+  printf("Dimensions of interior domain: %d, %d, %d. \n", Ncellx1, Ncellx2, Ncellx3);
+
 
   const auto lsizex1 = (pmesh->mesh_size.xmax(X1DIR) - pmesh->mesh_size.xmin(X1DIR))/Ncellx1;
   const auto lsizex2 = (pmesh->mesh_size.xmax(X2DIR) - pmesh->mesh_size.xmin(X2DIR))/Ncellx2;
@@ -201,10 +262,9 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
 
   // initialize conserved variables
-  //auto &coords = pmb->coords;
   auto &mbd = pmb->meshblock_data.Get();
   auto const &cons = md->PackVariables(std::vector<std::string>{"cons"});
-  //auto &u_dev = mbd->Get("cons").data;
+
 
   // Quantities to initialize
   int Nq = 4;
@@ -280,20 +340,19 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
       u(IDN, k, j, i) = ICsdata(indexDN)* d_cgs_factor;
       u(IM2, k, j, i) =  ICsdata(indexM2)* m_cgs_factor;
-      u(IEN, k, j, i) =  (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor;
-
+      u(IEN, k, j, i) =  ICsdata(indexIEN1)* e_cgs_factor + ICsdata(indexIEN2)/mbar_over_kb *d_cgs_factor ;
+      //if (j == kb.s) printf("Initial density, momm and energy of cells: %e, %e, %e \n", ICsdata(indexDN)* d_cgs_factor, ICsdata(indexM2)* m_cgs_factor, (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor);
     });
   
-  // copy initialized vars to device
-  //u_dev.DeepCopy(u);
   
 }
+
+
 
 
 void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
   auto cons = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
-  // TODO(pgrete) Add par_for_bndry to Parthenon without requiring nb
   const auto nb = IndexRange{0, 0};
   const auto rho_wind_ = rho_wind;
   const auto mom_wind_ = mom_wind;
@@ -322,6 +381,8 @@ void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
         }
       });
 }
+
+
 
 parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
   auto pmb = mbd->GetBlockPointer();
@@ -453,8 +514,10 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md) {
 }
 void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
                          const Real dt){
+
   ComputeCloudMassWeightedVel(md);
   ApplyFrameBoost(md);
 
                          }
+
 } // namespace cloud

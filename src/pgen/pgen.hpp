@@ -40,6 +40,7 @@ void UserWorkAfterLoop(Mesh *mesh, parthenon::ParameterInput *pin,
 namespace cloud {
 using namespace parthenon::driver::prelude;
 
+void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg);
 void InitUserMeshData(Mesh *mesh, ParameterInput *pin);
 void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md);
 void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
