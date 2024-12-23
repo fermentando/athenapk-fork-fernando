@@ -66,7 +66,7 @@ TabularCooling::TabularCooling(ParameterInput *pin,
   d_e_tol_ = pin->GetOrAddReal("cooling", "d_e_tol", 1e-8);
   // negative means disabled
   T_floor_ = pin->GetOrAddReal("hydro", "Tfloor", -1.0);
-  T_ceil_ = pin->GetOrAddReal("hydro", "Tceil", -1.0);
+  T_ceil_ = pin->GetOrAddReal("cooling", "Tceil", -1.0);
   printf("This is T_ceil: %g \n", T_ceil_);
 
   std::stringstream msg;
