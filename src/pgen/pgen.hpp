@@ -37,6 +37,15 @@ void UserWorkAfterLoop(Mesh *mesh, parthenon::ParameterInput *pin,
                        parthenon::SimTime &tm);
 } // namespace cpaw
 
+namespace cloud {
+using namespace parthenon::driver::prelude;
+
+void InitUserMeshData(Mesh *mesh, ParameterInput *pin);
+void ProblemGenerator(MeshBlock *pmb, parthenon::ParameterInput *pin);
+void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
+parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd);
+} // namespace cloud
+
 namespace wtopenrun {
 using namespace parthenon::driver::prelude;
 

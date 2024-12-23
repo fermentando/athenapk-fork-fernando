@@ -24,5 +24,5 @@ target_sources(athenaPK PRIVATE
     rand_blast.cpp
     sod.cpp
     turbulence.cpp
-    fractal_ism.cpp
+    wtopenrun.cpp
     )

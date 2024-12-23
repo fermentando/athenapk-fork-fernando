@@ -81,17 +81,17 @@ Real WindTunnelHst(MeshData<Real> *md) {
   Real sum;
 
   pmb->par_reduce(
-      "hst_windtunnel", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      "hst_windtunnel", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
         const auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
 
 
         if (hst_quan == HstQuan::mc) { 
-          const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+          const Real temp = mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
 
           if (temp <= 2*T_cloud) {
-            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            lsum += cons(IDN, k, j, i) * coords.CellVolume(k, j, i);
           }
         }
       },
