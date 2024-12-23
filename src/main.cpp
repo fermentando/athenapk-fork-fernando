@@ -65,6 +65,7 @@ int main(int argc, char *argv[]) {
     pman.app_input->MeshProblemGenerator = cloud::ProblemGenerator;
     pman.app_input->boundary_conditions[parthenon::BoundaryFace::inner_x2] =
         cloud::InflowWindX2;
+    Hydro::ProblemSourceFirstOrder = cloud::FrameBoosting;
     Hydro::ProblemCheckRefinementBlock = cloud::ProblemCheckRefinementBlock;
   } else if (problem == "blast") {
     pman.app_input->InitUserMeshData = blast::InitUserMeshData;

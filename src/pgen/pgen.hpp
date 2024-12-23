@@ -44,6 +44,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin);
 void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md);
 void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
 parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd);
+void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md);
+void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md);
+void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm, const Real dt);
 } // namespace cloud
 
 namespace blast {

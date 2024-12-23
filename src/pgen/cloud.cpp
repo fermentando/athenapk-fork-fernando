@@ -27,6 +27,9 @@
 // AthenaPK headers
 #include "../main.hpp"
 #include "../units.hpp"
+#include "../eos/adiabatic_glmmhd.hpp"
+#include "../eos/adiabatic_hydro.hpp"
+#include "cloud.hpp"
 
 
 namespace cloud {
@@ -66,6 +69,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   const auto c_s_wind = std::sqrt(gamma * gm1 * rhoe_wind / rho_wind);
   const auto v_wind = c_s_wind * Mach_wind;
   const auto chi_0 = rho_cloud / rho_wind;               // cloud to wind density ratio
+  const auto v_wind = c_s_wind * Mach_wind;
   const auto t_cc = r_cloud * std::sqrt(chi_0) / v_wind; // cloud crushting time (code)
   const auto pressure =
       gm1 * rhoe_wind; // one value for entire domain given initial pressure equil.
@@ -92,6 +96,16 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
                      "'aligned', 'transverse', or 'oblique'.");
     }
   }
+
+  const parthenon::Real He_mass_fraction = pin->GetReal("hydro", "He_mass_fraction");
+  const parthenon::Real H_mass_fraction = 1.0 - He_mass_fraction;
+  const parthenon::Real mu =
+      1 / (He_mass_fraction * 3. / 4. + (1 - He_mass_fraction) * 2);
+
+  pkg -> AddParam<Real>("singlecloud::mean_molecular_mass_by_kb", mu * units.atomic_mass_unit() / units.k_boltzmann());
+  //Set frame speed as mutable
+  pkg->AddParam<Real>("inertial_frame_v", 0., true);
+  pkg -> AddParam<Real>("Tcloud", T_cloud);
 
   mom_wind = rho_wind * v_wind;
 
@@ -335,4 +349,113 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
   return parthenon::AmrTag::same;
 };
 
+//========================================================================================
+//! \fn void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md)
+//  \brief Function to initialize problem-specific data in mesh class.  Can also be used
+//  to initialize variables which are global to (and therefore can be passed to) other
+//  functions in this file.  Called in Mesh constructor.
+//========================================================================================
+
+// Compute frame_boosting velocity
+void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
+
+  using parthenon::IndexDomain;
+  using parthenon::IndexRange;
+  using parthenon::Real;
+
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+  //const auto x2centre = (pmesh->mesh_size.xmax(X2DIR) + pmesh->mesh_size.xmin(X2DIR))/2;
+
+
+  const auto units = hydro_pkg->Param<Units>("units");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+  Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
+  Real frame_v;
+
+  Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
+
+  Kokkos::parallel_reduce(
+      "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),
+      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i, 
+      Real& local_IM_cold_gas, Real& local_cold_gas) { 
+        auto &cons = cons_pack(b);
+        const auto &coords = cons_pack.GetCoords(b);
+        //if ( coords.Xc<2>(j) < x2centre ) {
+          const Real temp =
+              mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
+
+          if (temp <= 2*T_cloud) {
+
+                  local_IM_cold_gas += cons(IM2, k, j, i);
+                  local_cold_gas += cons(IDN, k, j, i); 
+          }
+        //}
+      },
+      Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1])); 
+#ifdef MPI_PARALLEL
+  // Sum the perturbations over all processors
+  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 2, MPI_PARTHENON_REAL,
+                                    MPI_SUM, MPI_COMM_WORLD));
+#endif // MPI_PARALLEL
+
+  if (sums[1] > 0. && sums[0] > 0.) {
+  frame_v = sums[0]/sums[1];
+  } else {
+  frame_v = 0.;
+  }
+  hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
+
+}
+
+
+
+// Shift velocities to maintain intertial frame
+void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md) {
+
+  using parthenon::IndexDomain;
+  using parthenon::IndexRange;
+  using parthenon::Real;
+
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
+  auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+
+  Real frame_v = hydro_pkg->Param<Real>("inertial_frame_v");
+  
+  if (fabs(frame_v) > 100.01 || frame_v < 0.0) frame_v = 0.;
+
+ 
+  Kokkos::parallel_for(
+    "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),  
+    KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+
+        auto &cons = cons_pack(b);
+
+          
+            cons(IEN, k, j, i) -= frame_v * cons(IM2, k, j, i);
+            cons(IEN, k, j, i) += 0.5 * SQR(frame_v) * cons(IDN, k, j, i);
+            cons(IM2, k, j, i) -= frame_v * cons(IDN, k, j, i);
+    
+         
+      });
+
+  
+}
+void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
+                         const Real dt){
+  ComputeCloudMassWeightedVel(md);
+  ApplyFrameBoost(md);
+
+                         }
 } // namespace cloud
