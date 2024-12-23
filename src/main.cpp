@@ -69,8 +69,8 @@ int main(int argc, char *argv[]) {
   } else if (problem == "wtopenrun") {
     pman.app_input->InitUserMeshData = wtopenrun::InitUserMeshData;
     pman.app_input->MeshProblemGenerator = wtopenrun::ProblemGenerator;
-    pman.app_input->boundary_conditions[parthenon::BoundaryFace::inner_x2] =
-        wtopenrun::InflowWindX2;
+    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
+                                              "cloud_inflow_x2", cloud::InflowWindX2);
     Hydro::ProblemInitPackageData = wtopenrun::ProblemInitPackageData;
     Hydro::ProblemSourceFirstOrder = wtopenrun::FrameBoosting;
     Hydro::ProblemCheckRefinementBlock = wtopenrun::ProblemCheckRefinementBlock;
