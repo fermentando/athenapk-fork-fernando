@@ -3,8 +3,8 @@
 // Copyright (c) 2021, Athena-Parthenon Collaboration. All rights reserved.
 // Licensed under the 3-clause BSD License, see LICENSE file for details
 //========================================================================================
-//! \file cloud.cpp
-//! \brief Problem generator for cloud in wind simulation.
+//! \file wtopenrun.cpp
+//! \brief Open problem generator for wind tunnel simulations.
 //!
 
 // C++ headers
@@ -32,7 +32,7 @@
 
 
 
-namespace cloud {
+namespace wtopenrun {
 using namespace parthenon;
 using namespace parthenon::driver::prelude;
 using namespace parthenon::package::prelude;
@@ -63,7 +63,7 @@ enum class HstQuan {mc};
 
 // Compute the local sum of cloud mass
 template <HstQuan hst_quan>
-Real CloudHst(MeshData<Real> *md) {
+Real WindTunnelHst(MeshData<Real> *md) {
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
@@ -81,7 +81,7 @@ Real CloudHst(MeshData<Real> *md) {
   Real sum;
 
   pmb->par_reduce(
-      "hst_cloud", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      "hst_windtunnel", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
         const auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
@@ -104,10 +104,10 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
 
   auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
-                                                    CloudHst<HstQuan::mc>, "Mcloud (code units)"));
+                                                    WindTunnelHst<HstQuan::mc>, "Mcloud (code units)"));
   pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
 
-  }
+}
 
 
 void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
@@ -119,11 +119,11 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   const auto &pkg = mesh->packages.Get("Hydro");
   const auto mbar_over_kb = pkg->Param<Real>("mbar_over_kb");
 
-  r_cloud = pin->GetReal("problem/cloud", "r0_cgs") / units.code_length_cgs();
-  rho_cloud = pin->GetReal("problem/cloud", "rho_cloud_cgs") / units.code_density_cgs();
-  rho_wind = pin->GetReal("problem/cloud", "rho_wind_cgs") / units.code_density_cgs();
-  auto T_wind = pin->GetReal("problem/cloud", "T_wind_cgs");
-  auto Mach_wind = pin->GetReal("problem/cloud", "Mach_wind");
+  r_cloud = pin->GetReal("problem/wtopenrun", "r0_cgs") / units.code_length_cgs();
+  rho_cloud = pin->GetReal("problem/wtopenrun", "rho_cloud_cgs") / units.code_density_cgs();
+  rho_wind = pin->GetReal("problem/wtopenrun", "rho_wind_cgs") / units.code_density_cgs();
+  auto T_wind = pin->GetReal("problem/wtopenrun", "T_wind_cgs");
+  auto Mach_wind = pin->GetReal("problem/wtopenrun", "Mach_wind");
 
   // mu_mh_gm1_by_k_B is already in code units
   rhoe_wind = T_wind * rho_wind / mbar_over_kb / gm1;
@@ -136,10 +136,10 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
   const auto T_cloud = pressure / rho_cloud * mbar_over_kb;
 
-  auto plasma_beta = pin->GetOrAddReal("problem/cloud", "plasma_beta", -1.0);
+  auto plasma_beta = pin->GetOrAddReal("problem/wtopenrun", "plasma_beta", -1.0);
 
   auto mag_field_angle_str =
-      pin->GetOrAddString("problem/cloud", "mag_field_angle", "undefined");
+      pin->GetOrAddString("problem/wtopenrun", "mag_field_angle", "undefined");
   // To support using the MHD integrator as Hydro (with B=0 indicated by plasma_beta = 0)
   // we avoid division by 0 here.
   if (plasma_beta > 0.0) {
@@ -152,7 +152,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
       Bx = B / std::sqrt(5.0);
       Bz = 2 * Bx;
     } else {
-      PARTHENON_FAIL("Unsupported problem/cloud/mag_field_angle. Please use either "
+      PARTHENON_FAIL("Unsupported problem/wtopenrun/mag_field_angle. Please use either "
                      "'aligned', 'transverse', or 'oblique'.");
     }
   }
@@ -184,7 +184,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
   // (potentially) rescale global times only at the beginning of a simulation
   auto rescale_code_time_to_tcc =
-      pin->GetOrAddBoolean("problem/cloud", "rescale_code_time_to_tcc", false);
+      pin->GetOrAddBoolean("problem/wtopenrun", "rescale_code_time_to_tcc", false);
 
   if (rescale_code_time_to_tcc) {
     msg << "#### INFO:" << std::endl;
@@ -208,7 +208,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
         << "## Simulation will now run for " << tlim_rescaled
         << " [code_time] corresponding to " << tlim_orig << " [t_cc]." << std::endl;
     // Now disable rescaling of times so that this is done only once and not for restarts
-    pin->SetBoolean("problem/cloud", "rescale_code_time_to_tcc", false);
+    pin->SetBoolean("problem/wtopenrun", "rescale_code_time_to_tcc", false);
   }
   if (parthenon::Globals::my_rank == 0) {
     msg << "######################################" << std::endl;
@@ -217,7 +217,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   }
 
   // Check if frame boosting is on
-  //BoostBool = pin->GetOrAddBoolean("problem/cloud", "frame_boost", false);
+  //BoostBool = pin->GetOrAddBoolean("problem/wtopenrun", "frame_boost", false);
 }
 
 //----------------------------------------------------------------------------------------
@@ -324,7 +324,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   
   // Assign values to primary variables
 
-  Kokkos::parallel_for( "Cloud::ProblemGenerator", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s , jb.s, ib.s },{num_blocks, kb.e + 1, jb.e + 1, ib.e + 1}),
+  Kokkos::parallel_for( "WtOpenRun::ProblemGenerator", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s , jb.s, ib.s },{num_blocks, kb.e + 1, jb.e + 1, ib.e + 1}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
 
       const auto &u = cons(b);
@@ -397,7 +397,7 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
 
   Real maxscalar = 0.0;
   pmb->par_reduce(
-      "cloud refinement", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e + 1,
+      "WTOpenRun refinement", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e + 1,
       KOKKOS_LAMBDA(const int k, const int j, const int i, Real &lmaxscalar) {
         // scalar is first variable after hydro vars
         lmaxscalar = std::max(lmaxscalar, w(nhydro, k, j, i));
@@ -442,7 +442,7 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
   Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
 
   Kokkos::parallel_reduce(
-      "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),
+      "WTOpenRun::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i, 
       Real& local_IM_cold_gas, Real& local_cold_gas) { 
         auto &cons = cons_pack(b);
@@ -497,7 +497,7 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md) {
 
  
   Kokkos::parallel_for(
-    "SingleCloud::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),  
+    "WTOpenRun::frame_boosting_velocity", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),  
     KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
 
         auto &cons = cons_pack(b);
@@ -520,4 +520,4 @@ void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::Si
 
                          }
 
-} // namespace cloud
+} // namespace wtopenrun

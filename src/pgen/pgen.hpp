@@ -37,7 +37,7 @@ void UserWorkAfterLoop(Mesh *mesh, parthenon::ParameterInput *pin,
                        parthenon::SimTime &tm);
 } // namespace cpaw
 
-namespace cloud {
+namespace wtopenrun {
 using namespace parthenon::driver::prelude;
 
 void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg);
@@ -48,7 +48,7 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd);
 void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md);
 void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md);
 void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm, const Real dt);
-} // namespace cloud
+} // namespace wtopenrun
 
 namespace blast {
 using namespace parthenon::driver::prelude;

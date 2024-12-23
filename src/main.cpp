@@ -60,14 +60,14 @@ int main(int argc, char *argv[]) {
     pman.app_input->InitUserMeshData = cpaw::InitUserMeshData;
     pman.app_input->ProblemGenerator = cpaw::ProblemGenerator;
     pman.app_input->UserWorkAfterLoop = cpaw::UserWorkAfterLoop;
-  } else if (problem == "cloud") {
-    pman.app_input->InitUserMeshData = cloud::InitUserMeshData;
-    pman.app_input->MeshProblemGenerator = cloud::ProblemGenerator;
+  } else if (problem == "wtopenrun") {
+    pman.app_input->InitUserMeshData = wtopenrun::InitUserMeshData;
+    pman.app_input->MeshProblemGenerator = wtopenrun::ProblemGenerator;
     pman.app_input->boundary_conditions[parthenon::BoundaryFace::inner_x2] =
-        cloud::InflowWindX2;
-    Hydro::ProblemInitPackageData = cloud::ProblemInitPackageData;
-    Hydro::ProblemSourceFirstOrder = cloud::FrameBoosting;
-    Hydro::ProblemCheckRefinementBlock = cloud::ProblemCheckRefinementBlock;
+        wtopenrun::InflowWindX2;
+    Hydro::ProblemInitPackageData = wtopenrun::ProblemInitPackageData;
+    Hydro::ProblemSourceFirstOrder = wtopenrun::FrameBoosting;
+    Hydro::ProblemCheckRefinementBlock = wtopenrun::ProblemCheckRefinementBlock;
   } else if (problem == "blast") {
     pman.app_input->InitUserMeshData = blast::InitUserMeshData;
     pman.app_input->ProblemGenerator = blast::ProblemGenerator;
