@@ -69,7 +69,7 @@ Real WindTunnelHst(MeshData<Real> *md) {
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
 
-  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  const auto &prims_pack = md->PackVariables(std::vector<std::string>{"prims"});
 
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
@@ -81,17 +81,17 @@ Real WindTunnelHst(MeshData<Real> *md) {
   Real sum;
 
   pmb->par_reduce(
-      "hst_windtunnel", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      "hst_windtunnel", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
-        const auto &cons = cons_pack(b);
-        const auto &coords = cons_pack.GetCoords(b);
+        const auto &prims = prims_pack(b);
+        const auto &coords = prims_pack.GetCoords(b);
 
 
         if (hst_quan == HstQuan::mc) { 
-          const Real temp = mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
+          const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / prims(IDN, k, j, i);
 
           if (temp <= 2*T_cloud) {
-            lsum += cons(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            lsum += prims(IDN, k, j, i) * coords.CellVolume(k, j, i);
           }
         }
       },
