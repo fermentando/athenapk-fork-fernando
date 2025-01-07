@@ -14,14 +14,16 @@
 #include <fstream>   // bin file
 
 // Parthenon headers
+#include "basic_types.hpp"
+#include "kokkos_abstraction.hpp"
 #include "mesh/mesh.hpp"
-#include <basic_types.hpp>
 #include <iomanip>
 #include <ios>
 #include <parthenon/driver.hpp>
 #include <parthenon/package.hpp>
 #include <random>
 #include <sstream>
+#include <string>
 #include <globals.hpp>
 
 // AthenaPK headers
@@ -69,7 +71,7 @@ Real WindTunnelHst(MeshData<Real> *md) {
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
 
-  const auto &prims_pack = md->PackVariables(std::vector<std::string>{"prims"});
+  const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
 
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
@@ -81,17 +83,17 @@ Real WindTunnelHst(MeshData<Real> *md) {
   Real sum;
 
   pmb->par_reduce(
-      "hst_windtunnel", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      "hst_windtunnel", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
-        const auto &prims = prims_pack(b);
-        const auto &coords = prims_pack.GetCoords(b);
+        const auto &prim = prim_pack(b);
+        const auto &coords = prim_pack.GetCoords(b);
 
 
         if (hst_quan == HstQuan::mc) { 
-          const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / prims(IDN, k, j, i);
+          const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
 
           if (temp <= 2*T_cloud) {
-            lsum += prims(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
           }
         }
       },
@@ -342,8 +344,11 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
       u(IM2, k, j, i) =  ICsdata(indexM2)* m_cgs_factor;
       u(IEN, k, j, i) =  ICsdata(indexIEN1)* e_cgs_factor + ICsdata(indexIEN2)/mbar_over_kb *d_cgs_factor ;
       //if (j == kb.s) printf("Initial density, momm and energy of cells: %e, %e, %e \n", ICsdata(indexDN)* d_cgs_factor, ICsdata(indexM2)* m_cgs_factor, (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor);
+   
+   
     });
-  
+
+    std::cout << "Initial conditions finalised. \n"<< std::endl;
   
 }
 

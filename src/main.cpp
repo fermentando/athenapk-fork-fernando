@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
     pman.app_input->InitUserMeshData = wtopenrun::InitUserMeshData;
     pman.app_input->MeshProblemGenerator = wtopenrun::ProblemGenerator;
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
-                                              "cloud_inflow_x2", wtopenrun::InflowWindX2);
+                                              "wtopenrun_inflow_x2", wtopenrun::InflowWindX2);
     Hydro::ProblemInitPackageData = wtopenrun::ProblemInitPackageData;
     Hydro::ProblemSourceFirstOrder = wtopenrun::FrameBoosting;
     Hydro::ProblemCheckRefinementBlock = wtopenrun::ProblemCheckRefinementBlock;
