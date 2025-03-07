@@ -1,0 +1,104 @@
+<comment>
+problem = Open run wind tunnel simulation
+
+<job>
+problem_id = wtopenrun
+bin_input_file = ICs.bin
+
+<parthenon/mesh>
+refinement = none
+nghost = 4
+nx1 = 192
+x1min = -375
+x1max = 375
+ix1_bc = periodic
+ox1_bc = periodic
+nx2 = 320
+x2min = -200
+x2max = 1050
+ix2_bc = wtopenrun_inflow_x2
+ox2_bc = outflow
+nx3 = 192
+x3min = -375
+x3max = 375
+ix3_bc = periodic
+ox3_bc = periodic
+pack_size = -1
+tracking = False
+wfrac = 0.5
+
+<parthenon/meshblock>
+nx1 = 64
+nx2 = 64
+nx3 = 64
+
+<parthenon/time>
+integrator = vl2
+cfl = 0.20
+tlim = 6.0
+nlim = 1000000000
+ncycle_out_mesh = -500
+
+<hydro>
+fluid = euler
+eos = adiabatic
+riemann = hlle
+reconstruction = ppm
+gamma = 1.666666666666667
+first_order_flux_correct = true
+glmmhd_source = dedner_extended
+nscalars = 1
+Tfloor = 10000
+He_mass_fraction = 0.24
+
+<cooling>
+enable_cooling = none
+table_filename = gnat-sternberg.cooling_1Z
+lambda_units_cgs = 1
+integrator = townsends
+max_iter = 100
+cfl = 0.1
+d_log_temp_tol = 1
+d_e_tol = 1
+
+
+<units>
+code_length_cgs = 3.085677580962325e+18
+code_mass_cgs = 1.98841586e+33
+code_time_cgs = 3.15576e+13
+
+<refinement>
+type = maxdensity
+maxdensity_refine_above = 1e-4
+maxdensity_deref_below = 5e-5
+
+<problem/wtopenrun>
+r0_cgs = 2.3188323255404036e+20
+rho_cloud_cgs = 1e-24
+rho_wind_cgs = 1e-26
+T_wind_cgs = 1e6
+Mach_wind = 1.5
+rescale_code_time_to_tcc = true
+plasma_beta = -1.0
+mag_field_angle = transverse
+fv = 0.3
+kmin = default
+
+
+<parthenon/output0>
+file_type = hdf5
+dt = 0.5
+variables = prim
+id = prim
+single_precision_output = true
+hdf5_compression_level = 5
+
+<parthenon/output1>
+file_type = hst
+dt = 0.05
+
+<parthenon/output2>
+file_type = rst
+dt = 1
+id = restart
+hdf5_compression_level = 8

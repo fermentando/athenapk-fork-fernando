@@ -55,61 +55,6 @@ Real Bz = 0.0;
 //  to initialize variables which are global to (and therefore can be passed to) other
 //  functions in this file.  Called in Mesh constructor.
 //========================================================================================
-//----------------------------------------------------------------------------------------
-//! \fn void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg)
-//  \brief Hst file initialiser for new variables
-
-// TODO(?) until we are able to process multiple variables in a single hst function call
-// we'll use this enum to identify the various vars.
-enum class HstQuan {mc};
-
-// Compute the local sum of cloud mass
-template <HstQuan hst_quan>
-Real WindTunnelHst(MeshData<Real> *md) {
-  auto pmb = md->GetBlockData(0)->GetBlockPointer();
-  auto hydro_pkg = pmb->packages.Get("Hydro");
-  Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
-  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
-
-  const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
-
-  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
-  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
-  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
-
-
-  // after this function is called the result is MPI_SUMed across all procs/meshblocks
-  // thus, we're only concerned with local sums
-  Real sum;
-
-  pmb->par_reduce(
-      "hst_windtunnel", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
-        const auto &prim = prim_pack(b);
-        const auto &coords = prim_pack.GetCoords(b);
-
-
-        if (hst_quan == HstQuan::mc) { 
-          const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
-
-          if (temp <= 2*T_cloud) {
-            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
-          }
-        }
-      },
-      sum);
-
-  return sum;
-}
-
-void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg) {
-
-  auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
-  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
-                                                    WindTunnelHst<HstQuan::mc>, "Mcloud (code units)"));
-  pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
-
-}
 
 
 void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
@@ -126,6 +71,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   rho_wind = pin->GetReal("problem/wtopenrun", "rho_wind_cgs") / units.code_density_cgs();
   auto T_wind = pin->GetReal("problem/wtopenrun", "T_wind_cgs");
   auto Mach_wind = pin->GetReal("problem/wtopenrun", "Mach_wind");
+  auto bool_boost = pin->GetOrAddBoolean("parthenon/mesh", "tracking", false);
+  auto wfrac = pin->GetOrAddReal("parthenon/mesh", "wfrac", 1.);
+
 
   // mu_mh_gm1_by_k_B is already in code units
   rhoe_wind = T_wind * rho_wind / mbar_over_kb / gm1;
@@ -162,7 +110,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
   //Set frame speed as mutable
   pkg->AddParam<Real>("inertial_frame_v", 0., true);
-  pkg -> AddParam<Real>("Tcloud", T_cloud);
+  pkg->AddParam<Real>("Tcloud", T_cloud);
+  pkg->AddParam<Real>("wfrac", wfrac);
+  pkg->AddParam<bool>("tracking", bool_boost);
 
   mom_wind = rho_wind * v_wind;
 
@@ -183,6 +133,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   msg << "## Uniform pressure (code units): " << pressure << std::endl;
   msg << "## Wind sonic Mach: " << v_wind / c_s_wind << std::endl;
   msg << "## Cloud crushing time: " << t_cc / units.myr() << " Myr" << std::endl;
+  msg << "## Tracking on: " << std::boolalpha << bool_boost << std::endl;
 
   // (potentially) rescale global times only at the beginning of a simulation
   auto rescale_code_time_to_tcc =
@@ -222,6 +173,66 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   //BoostBool = pin->GetOrAddBoolean("problem/wtopenrun", "frame_boost", false);
 }
 
+
+
+
+std::pair<Real, Real> cold_gas_extent_y(MeshData<Real> *md) {
+
+  using parthenon::Real;
+
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  auto pmesh = pmb->pmy_mesh;
+
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+
+  Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+
+  Real cgymin = std::numeric_limits<Real>::max();  // Local min for reduction
+  Real cgymax = std::numeric_limits<Real>::lowest();  // Local max for reduction
+
+  Kokkos::Min<Real> reducer_min(cgymin);
+  Kokkos::Max<Real> reducer_max(cgymax);
+
+  Kokkos::parallel_reduce(
+      "WTOpenRun::cold_gas_extent_y",
+      Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
+          {0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e+1, jb.e+1, ib.e+1}),
+      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i, 
+      Real &thread_min, Real &thread_max) {
+
+          const auto &cons = cons_pack(b);
+          const auto &coords = cons_pack.GetCoords(b);
+
+          const Real temp = mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
+
+
+          if (temp <= 2 * T_cloud) {
+              Real y = coords.Xc<2>(j);  
+              
+              thread_min = fmin(thread_min, y);
+              thread_max = fmax(thread_max, y);
+          }
+      },
+      reducer_min, reducer_max);
+
+  // After reduction, if no cold gas was found (min is still max value), return ymax and 0.0
+  if (cgymin == std::numeric_limits<Real>::max()) {
+      // No cold gas found
+      return {pmesh->mesh_size.xmax(X2DIR), 0.0};
+  }
+
+  return {cgymin, cgymax - cgymin};
+}
+
+
+
+
 //----------------------------------------------------------------------------------------
 //! \fn void MeshBlock::ProblemGenerator(ParameterInput *pin)
 //  \brief Problem Generator for the cloud in wind setup
@@ -238,11 +249,12 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
+
   const auto mbar_over_kb = hydro_pkg->Param<Real>("mbar_over_kb");
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto nscalars = hydro_pkg->Param<int>("nscalars");
   const auto num_blocks = md->NumBlocks();
-
+ 
   auto ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
   auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   auto kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
@@ -349,11 +361,19 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     });
 
     std::cout << "Initial conditions finalised. \n"<< std::endl;
+
+
+    auto cg_width = cold_gas_extent_y(md);
+    parthenon::Real cgmin = cg_width.first;
+    parthenon::Real cg_extent = cg_width.second;
+    parthenon::Real wfrac = hydro_pkg->Param<Real>("wfrac");
+
+
+    hydro_pkg->AddParam("y0boost", wfrac * cg_extent + cgmin);
+
+    std::cout << "Benchmark for frame boost calculation at "<< (wfrac * cg_extent + abs(cgmin)) / (lsizex2 * Ncellx2) << "L_y,box. \n" << std::endl;
   
 }
-
-
-
 
 void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
@@ -422,7 +442,7 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
 //========================================================================================
 
 // Compute frame_boosting velocity
-void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
+Real ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
 
   using parthenon::IndexDomain;
   using parthenon::IndexRange;
@@ -436,13 +456,20 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
 
-  //const auto x2centre = (pmesh->mesh_size.xmax(X2DIR) + pmesh->mesh_size.xmin(X2DIR))/2;
+  //Skip calculation if tracking is off
+  auto bool_boost = hydro_pkg->Param<bool>("tracking");
+  if (!bool_boost) return 0.;
+  const auto x2_benchmark = hydro_pkg->Param<Real>("y0boost");
 
 
   const auto units = hydro_pkg->Param<Units>("units");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
   Real frame_v;
+
+  auto pmesh = pmb->pmy_mesh;
+  const auto x2centre = (pmesh->mesh_size.xmax(X2DIR) + pmesh->mesh_size.xmin(X2DIR))/2;
+
 
   Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
 
@@ -452,7 +479,7 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
       Real& local_IM_cold_gas, Real& local_cold_gas) { 
         auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
-        //if ( coords.Xc<2>(j) < x2centre ) {
+        if ( coords.Xc<2>(j) < x2centre ) {
           const Real temp =
               mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
 
@@ -461,7 +488,7 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
                   local_IM_cold_gas += cons(IM2, k, j, i);
                   local_cold_gas += cons(IDN, k, j, i); 
           }
-        //}
+        }
       },
       Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1])); 
 #ifdef MPI_PARALLEL
@@ -471,11 +498,13 @@ void ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
 #endif // MPI_PARALLEL
 
   if (sums[1] > 0. && sums[0] > 0.) {
-  frame_v = sums[0]/sums[1];
+    frame_v = sums[0]/sums[1];
   } else {
-  frame_v = 0.;
+    frame_v = 0.;
   }
   hydro_pkg->UpdateParam("inertial_frame_v", frame_v); 
+
+  return frame_v;
 
 }
 
@@ -517,12 +546,134 @@ void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md) {
 
   
 }
+
 void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm,
                          const Real dt){
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  bool bool_boost = hydro_pkg->Param<bool>("tracking");
 
-  ComputeCloudMassWeightedVel(md);
-  ApplyFrameBoost(md);
+  if (bool_boost){
+    printf("Boosting is working! \n");
+    Real boost = ComputeCloudMassWeightedVel(md);
+    ApplyFrameBoost(md);
+  }
 
-                         }
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg)
+//  \brief Hst file initialiser for new variables
+
+// TODO(?) until we are able to process multiple variables in a single hst function call
+// we'll use this enum to identify the various vars.
+enum class HstQuan {mc, mMx1, mMx2, mMx3, vboost, mcout};
+
+// Compute the local sum of cloud mass
+template <HstQuan hst_quan>
+Real WindTunnelHst(MeshData<Real> *md) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+
+  const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+
+  // after this function is called the result is MPI_SUMed across all procs/meshblocks
+  // thus, we're only concerned with local sums
+  Real sum;
+
+  if (hst_quan == HstQuan::mcout){
+    IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::outer_x2);
+    IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::outer_x2);
+    IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::outer_x2);
+
+    auto pmesh = pmb->pmy_mesh;
+    const auto x2max = pmesh->mesh_size.xmax(X2DIR);
+
+
+    pmb->par_reduce(
+      "hst_outflow_y", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+        const auto &prim = prim_pack(b);
+        const auto &coords = prim_pack.GetCoords(b);
+        const Real rho = prim(IDN, k, j, i);    
+        const Real My = prim(IM2, k, j, i);      
+        const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / rho; 
+
+        if (coords.Xc<2>(j) > x2max && My > 0.0 && temp <= 2 * T_cloud) {
+          const Real mass = rho * coords.CellVolume(k, j, i); 
+          lsum += mass; 
+        }
+      },
+    sum);
+  }
+
+  else{
+  pmb->par_reduce(
+      "hst_windtunnel", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+        const auto &prim = prim_pack(b);
+        const auto &coords = prim_pack.GetCoords(b);
+        const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+
+        if (temp <= 2*T_cloud) { 
+
+          if (hst_quan == HstQuan::mc) {
+            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+          if (hst_quan == HstQuan::mMx1) {
+            lsum += prim(IM1, k, j, i) * prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+          if (hst_quan == HstQuan::mMx2) {
+            lsum +=  prim(IM2, k, j, i) * prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+          if (hst_quan == HstQuan::mMx3) {
+            lsum +=  prim(IM3, k, j, i) * prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+          
+        }
+      },
+      sum);
+  }
+
+  return sum;
+}
+
+Real HstComputeBoost(MeshData<Real> *md) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto pkg = pmb->packages.Get("hydro");
+  std::cout << "Does this give an error?" << std::endl;
+  auto frame_v = pkg->Param<Real>("inertial_frame_v");
+  std::cout << "Error here."<< std::endl;
+  return frame_v;
+};
+
+
+void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg) {
+
+  
+  auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
+
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    WindTunnelHst<HstQuan::mc>, "mc"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    WindTunnelHst<HstQuan::mMx1>, "mMx1"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    WindTunnelHst<HstQuan::mMx2>, "mMx2"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    WindTunnelHst<HstQuan::mMx3>, "mMx3"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::max,
+                                                    ComputeCloudMassWeightedVel, "vboost"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    WindTunnelHst<HstQuan::mcout>, "mcout"));
+  pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
+
+}
 
 } // namespace wtopenrun
