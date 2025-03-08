@@ -13,6 +13,11 @@
 #include <cstring>   // strcmp()
 #include <fstream>   // bin file
 
+//I/O for ICs reader
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 // Parthenon headers
 #include "basic_types.hpp"
 #include "kokkos_abstraction.hpp"
@@ -282,59 +287,63 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
   // Quantities to initialize
   int Nq = 4;
-
-  // View for ICs Kokkos initialization
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
-  typedef Kokkos::View<double*> BinArr;
-  BinArr ICsdata("data", size); 
-  BinArr::HostMirror hICs = Kokkos::create_mirror_view(ICsdata);
-
-  // Read ICs binary using IOWrapper
-  parthenon::IOWrapper input;
-  input.Open(ics_filename.c_str(), parthenon::IOWrapper::FileMode::read);
-
-  const int bufsize = 4096;
-  auto buf = std::make_unique<char[]>(bufsize); // Use smart pointers for safety
-  size_t bytes_read = 0;
   size_t total_bytes = size * sizeof(double);
+
+
+// Check available GPU memory
+  size_t free_mem, total_mem;
+  cudaMemGetInfo(&free_mem, &total_mem);
+  std::cout << "GPU Memory: " << free_mem / (1024.0 * 1024) << " MiB free, "
+            << total_mem / (1024.0 * 1024) << " MiB total." << std::endl;
+  if (free_mem < total_bytes) {
+      PARTHENON_FAIL("Not enough GPU memory available.");
+  }
+
+  // Memory-map the ICs file
+  int fd = open(ics_filename.c_str(), O_RDONLY);
+  if (fd == -1) {
+      PARTHENON_FAIL("Failed to open ICs file.");
+  }
+
+  double *file_data = (double *)mmap(nullptr, total_bytes, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (file_data == MAP_FAILED) {
+      close(fd);
+      PARTHENON_FAIL("Memory mapping failed.");
+  }
+
+  // Allocate memory on host (compatible with older Kokkos versions)
+  typedef Kokkos::View<double*, Kokkos::DefaultHostExecutionSpace::memory_space> HostPinnedArr;
+  HostPinnedArr hICs("hICs", size);
+
+  size_t bufsize = 1024 * 1024; // Read in 1MB chunks
+  size_t bytes_read = 0;
   size_t doubles_read = 0;
 
   while (bytes_read < total_bytes) {
-      size_t bytes_to_read = std::min(static_cast<size_t>(bufsize), total_bytes - bytes_read);
+      size_t bytes_to_read = std::min(bufsize, total_bytes - bytes_read);
+      size_t doubles_to_read = bytes_to_read / sizeof(double);
 
-      size_t ret;
-      if (Globals::my_rank == 0) { // Only the master process reads the ICs file
-          ret = input.Read(buf.get(), sizeof(char), bytes_to_read);
-      }
-#ifdef MPI_PARALLEL
-      // Broadcast the size and buffer content
-      MPI_Bcast(&ret, sizeof(size_t), MPI_BYTE, 0, MPI_COMM_WORLD);
-      MPI_Bcast(buf.get(), ret, MPI_BYTE, 0, MPI_COMM_WORLD);
-#endif
-      if (ret == 0) break; // End of file or read error
-
-      size_t doubles_to_read = ret / sizeof(double);
-      if (doubles_read + doubles_to_read > size) {
-          PARTHENON_FAIL("File contains more data than expected dimensions.");
-      }
-
-      std::memcpy(hICs.data() + doubles_read, buf.get(), doubles_to_read * sizeof(double));
+      // Copy chunk from mmap file to pinned host memory
+      std::memcpy(hICs.data() + doubles_read, file_data + doubles_read, doubles_to_read * sizeof(double));
+      
       doubles_read += doubles_to_read;
-      bytes_read += ret;
+      bytes_read += bytes_to_read;
   }
 
-  input.Close();
+  munmap(file_data, total_bytes);
+  close(fd);
 
-  // Check if the total number of elements matches the expected size
   if (doubles_read != size) {
-      PARTHENON_FAIL("File size does not match expected dimensions. Expected " + std::to_string(size) + " doubles but read " + std::to_string(doubles_read) + " doubles.");
+      PARTHENON_FAIL("File size does not match expected dimensions.");
   }
 
-  // Pass data onto device memory space 
+  // Allocate memory on device using Unified Memory
+  typedef Kokkos::View<double*, Kokkos::CudaUVMSpace> DeviceArr;
+  DeviceArr ICsdata("ICsdata", size);
   Kokkos::deep_copy(ICsdata, hICs);
 
   std::cout << "Initialized ICs data of size: " << size << " elements." << std::endl;
-
   
   // Assign values to primary variables
 
