@@ -235,7 +235,24 @@ std::pair<Real, Real> cold_gas_extent_y(MeshData<Real> *md) {
   return {cgymin, cgymax - cgymin};
 }
 
-
+// Function to check available memory (only works for CUDA/HIP devices)
+bool checkGpuMemory(size_t required_bytes) {
+#if defined(KOKKOS_ENABLE_CUDA)
+    size_t free_mem, total_mem;
+    cudaMemGetInfo(&free_mem, &total_mem);
+    std::cout << "GPU Memory: " << free_mem / (1024.0 * 1024) << " MiB free, "
+              << total_mem / (1024.0 * 1024) << " MiB total." << std::endl;
+    return free_mem >= required_bytes;
+#elif defined(KOKKOS_ENABLE_HIP)
+    size_t free_mem, total_mem;
+    hipMemGetInfo(&free_mem, &total_mem);
+    std::cout << "HIP GPU Memory: " << free_mem / (1024.0 * 1024) << " MiB free, "
+              << total_mem / (1024.0 * 1024) << " MiB total." << std::endl;
+    return free_mem >= required_bytes;
+#else
+    return true; // Assume CPU has enough memory
+#endif
+}
 
 
 //----------------------------------------------------------------------------------------
@@ -290,43 +307,40 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
   size_t total_bytes = size * sizeof(double);
 
-
-// Check available GPU memory
-  size_t free_mem, total_mem;
-  cudaMemGetInfo(&free_mem, &total_mem);
-  std::cout << "GPU Memory: " << free_mem / (1024.0 * 1024) << " MiB free, "
-            << total_mem / (1024.0 * 1024) << " MiB total." << std::endl;
-  if (free_mem < total_bytes) {
+  // Check GPU memory availability
+  if (!checkGpuMemory(total_bytes)) {
       PARTHENON_FAIL("Not enough GPU memory available.");
   }
 
-  // Memory-map the ICs file
+  // Allocate host memory
+  using HostMemSpace = Kokkos::DefaultHostExecutionSpace::memory_space;
+  typedef Kokkos::View<double*, HostMemSpace> HostPinnedArr;
+  HostPinnedArr hICs("hICs", total_bytes / sizeof(double));
+
+  // Open and memory-map the file
   int fd = open(ics_filename.c_str(), O_RDONLY);
   if (fd == -1) {
       PARTHENON_FAIL("Failed to open ICs file.");
   }
 
-  double *file_data = (double *)mmap(nullptr, total_bytes, PROT_READ, MAP_PRIVATE, fd, 0);
+  void* file_data = mmap(nullptr, total_bytes, PROT_READ, MAP_PRIVATE, fd, 0);
   if (file_data == MAP_FAILED) {
       close(fd);
       PARTHENON_FAIL("Memory mapping failed.");
   }
 
-  // Allocate memory on host (compatible with older Kokkos versions)
-  typedef Kokkos::View<double*, Kokkos::DefaultHostExecutionSpace::memory_space> HostPinnedArr;
-  HostPinnedArr hICs("hICs", size);
-
-  size_t bufsize = 1024 * 1024; // Read in 1MB chunks
+  // Read in 1MB chunks (works for both GPU and CPU)
+  size_t bufsize = 1024 * 1024;
   size_t bytes_read = 0;
   size_t doubles_read = 0;
-
+  double* src = static_cast<double*>(file_data);
+  
   while (bytes_read < total_bytes) {
       size_t bytes_to_read = std::min(bufsize, total_bytes - bytes_read);
       size_t doubles_to_read = bytes_to_read / sizeof(double);
 
-      // Copy chunk from mmap file to pinned host memory
-      std::memcpy(hICs.data() + doubles_read, file_data + doubles_read, doubles_to_read * sizeof(double));
-      
+      std::memcpy(hICs.data() + doubles_read, src + doubles_read, bytes_to_read);
+
       doubles_read += doubles_to_read;
       bytes_read += bytes_to_read;
   }
@@ -334,16 +348,21 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   munmap(file_data, total_bytes);
   close(fd);
 
-  if (doubles_read != size) {
-      PARTHENON_FAIL("File size does not match expected dimensions.");
-  }
+  // Allocate memory on device (fallback to host if no GPU is available)
+  using DevMemSpace = std::conditional_t<
+      Kokkos::SpaceAccessibility<Kokkos::DefaultExecutionSpace::memory_space, Kokkos::HostSpace>::accessible,
+      Kokkos::HostSpace, // Use host if the execution space cannot access GPU
+      Kokkos::DefaultExecutionSpace::memory_space // Use default execution space (GPU if available)
+  >;
 
-  // Allocate memory on device using Unified Memory
-  typedef Kokkos::View<double*, Kokkos::CudaUVMSpace> DeviceArr;
-  DeviceArr ICsdata("ICsdata", size);
+  typedef Kokkos::View<double*, DevMemSpace> DeviceArr;
+  DeviceArr ICsdata("ICsdata", total_bytes / sizeof(double));
+
+  // Copy from host to device (or host to host)
   Kokkos::deep_copy(ICsdata, hICs);
 
-  std::cout << "Initialized ICs data of size: " << size << " elements." << std::endl;
+  std::cout << "Initialized ICs data of size: " << ICsdata.extent(0) << " elements." << std::endl;
+
   
   // Assign values to primary variables
 
