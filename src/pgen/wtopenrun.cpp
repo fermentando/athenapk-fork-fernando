@@ -239,13 +239,19 @@ std::pair<Real, Real> cold_gas_extent_y(MeshData<Real> *md) {
 bool checkGpuMemory(size_t required_bytes) {
 #if defined(KOKKOS_ENABLE_CUDA)
     size_t free_mem, total_mem;
-    cudaMemGetInfo(&free_mem, &total_mem);
+    if (cudaMemGetInfo(&free_mem, &total_mem) != cudaSuccess) {
+        std::cerr << "cudaMemGetInfo failed!" << std::endl;
+        return false;
+    }
     std::cout << "GPU Memory: " << free_mem / (1024.0 * 1024) << " MiB free, "
               << total_mem / (1024.0 * 1024) << " MiB total." << std::endl;
     return free_mem >= required_bytes;
 #elif defined(KOKKOS_ENABLE_HIP)
     size_t free_mem, total_mem;
-    hipMemGetInfo(&free_mem, &total_mem);
+    if (hipMemGetInfo(&free_mem, &total_mem) != hipSuccess) {
+        std::cerr << "hipMemGetInfo failed!" << std::endl;
+        return false;
+    }
     std::cout << "HIP GPU Memory: " << free_mem / (1024.0 * 1024) << " MiB free, "
               << total_mem / (1024.0 * 1024) << " MiB total." << std::endl;
     return free_mem >= required_bytes;
@@ -253,6 +259,7 @@ bool checkGpuMemory(size_t required_bytes) {
     return true; // Assume CPU has enough memory
 #endif
 }
+
 
 
 //----------------------------------------------------------------------------------------
@@ -582,7 +589,6 @@ void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::Si
   bool bool_boost = hydro_pkg->Param<bool>("tracking");
 
   if (bool_boost){
-    printf("Boosting is working! \n");
     Real boost = ComputeCloudMassWeightedVel(md);
     ApplyFrameBoost(md);
   }
