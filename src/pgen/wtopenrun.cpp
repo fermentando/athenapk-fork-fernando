@@ -315,25 +315,20 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
   size_t total_bytes = size * sizeof(double);
 
-  // Check GPU memory availability
-  if (!checkGpuMemory(total_bytes)) {
-      PARTHENON_FAIL("Not enough GPU memory available.");
-  }
-
   // Allocate host memory explicitly
   using HostMemSpace = Kokkos::HostSpace;
   typedef Kokkos::View<double*, HostMemSpace> HostPinnedArr;
   HostPinnedArr hICs("hICs", total_bytes / sizeof(double));
 
   // Open and memory-map the file
-    int fd = open(ics_filename.c_str(), O_RDONLY);
+  int fd = open(ics_filename.c_str(), O_RDONLY);
   if (fd == -1) {
       PARTHENON_FAIL("Failed to open ICs file.");
   }
 
   // Check file size
   struct stat file_stat;
-  if (stat(ics_filename.c_str(), &file_stat) == -1) {
+  if (fstat(fd, &file_stat) == -1) {  // ✅ FIX: Use fstat instead of stat
       close(fd);
       PARTHENON_FAIL("Failed to get file size.");
   }
@@ -368,7 +363,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
       size_t bytes_to_read = std::min(bufsize, total_bytes - bytes_read);
       size_t doubles_to_read = bytes_to_read / sizeof(double);
 
-      std::memmove(hICs.data() + doubles_read, src + doubles_read, bytes_to_read);
+      std::memcpy(hICs.data() + doubles_read, src + doubles_read, bytes_to_read); // ✅ FIX: Use memcpy
 
       doubles_read += doubles_to_read;
       bytes_read += bytes_to_read;
@@ -379,7 +374,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   close(fd);
 
   // Allocate another host memory buffer for ICsdata
-  typedef Kokkos::View<double*, HostMemSpace> HostArr;
+  typedef Kokkos::View<double*, Kokkos::DefaultExecutionSpace> HostArr;
   HostArr ICsdata("ICsdata", total_bytes / sizeof(double));
 
   // Copy directly within host memory
@@ -387,39 +382,37 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
   std::cout << "Initialized ICs data of size: " << ICsdata.extent(0) << " elements." << std::endl;
 
-
-  
   // Assign values to primary variables
-
-  Kokkos::parallel_for( "WtOpenRun::ProblemGenerator", Kokkos::MDRangePolicy<Kokkos::Rank<4>>({0, kb.s , jb.s, ib.s },{num_blocks, kb.e + 1, jb.e + 1, ib.e + 1}),
+  Kokkos::parallel_for(
+      "WtOpenRun::ProblemGenerator",
+      Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
+          {0, kb.s, jb.s, ib.s}, {num_blocks, kb.e + 1, jb.e + 1, ib.e + 1}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
 
-      const auto &u = cons(b);
-      const auto &coords = cons.GetCoords(b);
-      const int global_x = (coords.Xc<1>(i) - lsizex1/2 - x1min)/lsizex1;
-      const int global_y = (coords.Xc<2>(j) - lsizex2/2 - x2min)/lsizex2;
-      const int global_z = (coords.Xc<3>(k) - lsizex3/2 - x3min)/lsizex3;
+          const auto &u = cons(b);
+          const auto &coords = cons.GetCoords(b);
+          const int global_x = (coords.Xc<1>(i) - lsizex1/2 - x1min)/lsizex1;
+          const int global_y = (coords.Xc<2>(j) - lsizex2/2 - x2min)/lsizex2;
+          const int global_z = (coords.Xc<3>(k) - lsizex3/2 - x3min)/lsizex3;
 
-      int indexDN = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0;
-      int indexM2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1;
-      int indexIEN1 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2;
-      int indexIEN2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 3;
-      int indexNHYDRO = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 4;
+          int indexDN = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0;
+          int indexM2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1;
+          int indexIEN1 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2;
+          int indexIEN2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 3;
+          int indexNHYDRO = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 4;
 
-      u(IDN, k, j, i) = ICsdata(indexDN)* d_cgs_factor;
-      u(IM2, k, j, i) =  ICsdata(indexM2)* m_cgs_factor;
-      u(IEN, k, j, i) =  ICsdata(indexIEN1)* e_cgs_factor + ICsdata(indexIEN2)/mbar_over_kb *d_cgs_factor ;
-      
-      // Init passive scalars
-      for (auto n = nhydro; n < nhydro + nscalars; n++) {
-          u(n, k, j, i) = ICsdata(indexNHYDRO) * u(IDN, k, j, i);
-      }
+          u(IDN, k, j, i) = ICsdata(indexDN) * d_cgs_factor;
+          u(IM2, k, j, i) = ICsdata(indexM2) * m_cgs_factor;
+          u(IEN, k, j, i) = ICsdata(indexIEN1) * e_cgs_factor + ICsdata(indexIEN2) / mbar_over_kb * d_cgs_factor;
+          
+          // Init passive scalars
+          for (auto n = nhydro; n < nhydro + nscalars; n++) {
+              u(n, k, j, i) = ICsdata(indexNHYDRO) * u(IDN, k, j, i);
+          }
+      });
 
-   
-   
-    });
+  std::cout << "Initial conditions finalized. \n" << std::endl;
 
-    std::cout << "Initial conditions finalised. \n"<< std::endl;
 
 
     auto cg_width = cold_gas_extent_y(md);
