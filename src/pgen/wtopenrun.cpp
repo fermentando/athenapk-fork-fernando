@@ -310,7 +310,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
 
   // Quantities to initialize
-  int Nq = 4;
+  int Nq = 5;
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
   size_t total_bytes = size * sizeof(double);
 
@@ -386,11 +386,17 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
       int indexM2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1;
       int indexIEN1 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2;
       int indexIEN2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 3;
+      int indexNHYDRO = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 4;
 
       u(IDN, k, j, i) = ICsdata(indexDN)* d_cgs_factor;
       u(IM2, k, j, i) =  ICsdata(indexM2)* m_cgs_factor;
       u(IEN, k, j, i) =  ICsdata(indexIEN1)* e_cgs_factor + ICsdata(indexIEN2)/mbar_over_kb *d_cgs_factor ;
-      //if (j == kb.s) printf("Initial density, momm and energy of cells: %e, %e, %e \n", ICsdata(indexDN)* d_cgs_factor, ICsdata(indexM2)* m_cgs_factor, (ICsdata(indexIEN1) + ICsdata(indexIEN2)/mbar_over_kb ) * e_cgs_factor);
+      
+      // Init passive scalars
+      for (auto n = nhydro; n < nhydro + nscalars; n++) {
+          u(n, k, j, i) = ICsdata(indexNHYDRO) * u(IDN, k, j, i);
+      }
+
    
    
     });
@@ -518,7 +524,7 @@ Real ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
           const Real temp =
               mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
 
-          if (temp <= 2*T_cloud) {
+          if (temp <= 10*T_cloud) {
 
                   local_IM_cold_gas += cons(IM2, k, j, i);
                   local_cold_gas += cons(IDN, k, j, i); 
