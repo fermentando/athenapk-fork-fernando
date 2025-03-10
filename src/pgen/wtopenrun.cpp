@@ -17,6 +17,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h> 
 
 // Parthenon headers
 #include "basic_types.hpp"
@@ -310,7 +311,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
 
   // Quantities to initialize
-  int Nq = 5;
+  int Nq = 4;
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
   size_t total_bytes = size * sizeof(double);
 
@@ -319,56 +320,73 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
       PARTHENON_FAIL("Not enough GPU memory available.");
   }
 
-  // Allocate host memory
-  using HostMemSpace = Kokkos::DefaultHostExecutionSpace::memory_space;
+  // Allocate host memory explicitly
+  using HostMemSpace = Kokkos::HostSpace;
   typedef Kokkos::View<double*, HostMemSpace> HostPinnedArr;
   HostPinnedArr hICs("hICs", total_bytes / sizeof(double));
 
   // Open and memory-map the file
-  int fd = open(ics_filename.c_str(), O_RDONLY);
+    int fd = open(ics_filename.c_str(), O_RDONLY);
   if (fd == -1) {
       PARTHENON_FAIL("Failed to open ICs file.");
   }
 
+  // Check file size
+  struct stat file_stat;
+  if (stat(ics_filename.c_str(), &file_stat) == -1) {
+      close(fd);
+      PARTHENON_FAIL("Failed to get file size.");
+  }
+  if (file_stat.st_size < total_bytes) {
+      close(fd);
+      PARTHENON_FAIL("ICs file is smaller than expected data size.");
+  }
+
+  // Memory-map the file
   void* file_data = mmap(nullptr, total_bytes, PROT_READ, MAP_PRIVATE, fd, 0);
   if (file_data == MAP_FAILED) {
       close(fd);
       PARTHENON_FAIL("Memory mapping failed.");
   }
 
-  // Read in 1MB chunks (works for both GPU and CPU)
+  // Optimize memory access
+  madvise(file_data, total_bytes, MADV_SEQUENTIAL);
+
+  // Ensure proper alignment
+  double* src = reinterpret_cast<double*>(file_data);
+  if (reinterpret_cast<uintptr_t>(src) % alignof(double) != 0) {
+      munmap(file_data, total_bytes);
+      close(fd);
+      PARTHENON_FAIL("Memory-mapped file data is not properly aligned.");
+  }
+
+  // Read in chunks
   size_t bufsize = 1024 * 1024;
   size_t bytes_read = 0;
   size_t doubles_read = 0;
-  double* src = static_cast<double*>(file_data);
-  
   while (bytes_read < total_bytes) {
       size_t bytes_to_read = std::min(bufsize, total_bytes - bytes_read);
       size_t doubles_to_read = bytes_to_read / sizeof(double);
 
-      std::memcpy(hICs.data() + doubles_read, src + doubles_read, bytes_to_read);
+      std::memmove(hICs.data() + doubles_read, src + doubles_read, bytes_to_read);
 
       doubles_read += doubles_to_read;
       bytes_read += bytes_to_read;
   }
 
+  // Cleanup
   munmap(file_data, total_bytes);
   close(fd);
 
-  // Allocate memory on device (fallback to host if no GPU is available)
-  using DevMemSpace = std::conditional_t<
-      Kokkos::SpaceAccessibility<Kokkos::DefaultExecutionSpace::memory_space, Kokkos::HostSpace>::accessible,
-      Kokkos::HostSpace, // Use host if the execution space cannot access GPU
-      Kokkos::DefaultExecutionSpace::memory_space // Use default execution space (GPU if available)
-  >;
+  // Allocate another host memory buffer for ICsdata
+  typedef Kokkos::View<double*, HostMemSpace> HostArr;
+  HostArr ICsdata("ICsdata", total_bytes / sizeof(double));
 
-  typedef Kokkos::View<double*, DevMemSpace> DeviceArr;
-  DeviceArr ICsdata("ICsdata", total_bytes / sizeof(double));
-
-  // Copy from host to device (or host to host)
+  // Copy directly within host memory
   Kokkos::deep_copy(ICsdata, hICs);
 
   std::cout << "Initialized ICs data of size: " << ICsdata.extent(0) << " elements." << std::endl;
+
 
   
   // Assign values to primary variables
