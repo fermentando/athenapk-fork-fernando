@@ -509,6 +509,7 @@ Real ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
   Real frame_v;
 
   auto pmesh = pmb->pmy_mesh;
+  // const auto x2centre = hydro_pkg->Param<Real>("y0boost");
   const auto x2centre = (pmesh->mesh_size.xmax(X2DIR) + pmesh->mesh_size.xmin(X2DIR))/2;
 
 
@@ -520,7 +521,7 @@ Real ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
       Real& local_IM_cold_gas, Real& local_cold_gas) { 
         auto &cons = cons_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
-        if ( coords.Xc<2>(j) < x2centre ) {
+        //if ( coords.Xc<2>(j) < x2centre ) {
           const Real temp =
               mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
 
@@ -529,7 +530,7 @@ Real ComputeCloudMassWeightedVel(parthenon::MeshData<parthenon::Real> *md) {
                   local_IM_cold_gas += cons(IM2, k, j, i);
                   local_cold_gas += cons(IDN, k, j, i); 
           }
-        }
+       // }
       },
       Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1])); 
 #ifdef MPI_PARALLEL
