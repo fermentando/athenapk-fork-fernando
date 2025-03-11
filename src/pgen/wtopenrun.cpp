@@ -310,108 +310,112 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   auto const &cons = md->PackVariables(std::vector<std::string>{"cons"});
 
 
+  
   // Quantities to initialize
   int Nq = 4;
   size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
   size_t total_bytes = size * sizeof(double);
 
-  // Allocate host memory explicitly
+  // Allocate host memory in chunks
   using HostMemSpace = Kokkos::HostSpace;
-  typedef Kokkos::View<double*, HostMemSpace> HostPinnedArr;
-  HostPinnedArr hICs("hICs", total_bytes / sizeof(double));
+  using HostPinnedArr = Kokkos::View<double*, HostMemSpace>;
+
+  size_t chunk_size = 1024 * 1024;  // Max chunk size (adjust as needed)
+  size_t num_chunks = (size + chunk_size - 1) / chunk_size;
+
+  // Create a vector of chunked Views
+  std::vector<HostPinnedArr> hICs_chunks(num_chunks);
+  for (size_t i = 0; i < num_chunks; i++) {
+      size_t this_chunk_size = std::min(chunk_size, size - i * chunk_size);
+      hICs_chunks[i] = HostPinnedArr("hICs_chunk", this_chunk_size);
+  }
 
   // Open and memory-map the file
   int fd = open(ics_filename.c_str(), O_RDONLY);
   if (fd == -1) {
-      PARTHENON_FAIL("Failed to open ICs file.");
+      std::cerr << "Failed to open ICs file." << std::endl;
+      return;
   }
 
-  // Check file size
+  // Get file size
   struct stat file_stat;
-  if (fstat(fd, &file_stat) == -1) {  // ✅ FIX: Use fstat instead of stat
+  if (fstat(fd, &file_stat) == -1) {
       close(fd);
-      PARTHENON_FAIL("Failed to get file size.");
+      std::cerr << "Failed to get file size." << std::endl;
+      return;
   }
   if (file_stat.st_size < total_bytes) {
       close(fd);
-      PARTHENON_FAIL("ICs file is smaller than expected data size.");
+      std::cerr << "ICs file is smaller than expected data size." << std::endl;
+      return;
   }
 
-  // Memory-map the file
-  void* file_data = mmap(nullptr, total_bytes, PROT_READ, MAP_PRIVATE, fd, 0);
-  if (file_data == MAP_FAILED) {
-      close(fd);
-      PARTHENON_FAIL("Memory mapping failed.");
-  }
-
-  // Optimize memory access
-  madvise(file_data, total_bytes, MADV_SEQUENTIAL);
-
-  // Ensure proper alignment
-  double* src = reinterpret_cast<double*>(file_data);
-  if (reinterpret_cast<uintptr_t>(src) % alignof(double) != 0) {
-      munmap(file_data, total_bytes);
-      close(fd);
-      PARTHENON_FAIL("Memory-mapped file data is not properly aligned.");
-  }
-
-  // Read in chunks
-  size_t bufsize = 1024 * 1024;
+  // Memory-map the file in chunks
   size_t bytes_read = 0;
   size_t doubles_read = 0;
-  while (bytes_read < total_bytes) {
-      size_t bytes_to_read = std::min(bufsize, total_bytes - bytes_read);
-      size_t doubles_to_read = bytes_to_read / sizeof(double);
 
-      std::memcpy(hICs.data() + doubles_read, src + doubles_read, bytes_to_read); // ✅ FIX: Use memcpy
+  while (bytes_read < total_bytes) {
+      size_t bytes_to_read = std::min(chunk_size * sizeof(double), total_bytes - bytes_read);
+
+      void* file_data = mmap(nullptr, bytes_to_read, PROT_READ, MAP_PRIVATE, fd, bytes_read);
+      if (file_data == MAP_FAILED) {
+          close(fd);
+          std::cerr << "Memory mapping failed." << std::endl;
+          return;
+      }
+
+      madvise(file_data, bytes_to_read, MADV_SEQUENTIAL);
+
+      double* src = reinterpret_cast<double*>(file_data);
+
+      size_t doubles_to_read = bytes_to_read / sizeof(double);
+      std::memcpy(hICs_chunks[doubles_read / chunk_size].data(), src, bytes_to_read);
 
       doubles_read += doubles_to_read;
       bytes_read += bytes_to_read;
+
+      munmap(file_data, bytes_to_read);  // Free memory after reading each chunk
   }
 
-  // Cleanup
-  munmap(file_data, total_bytes);
   close(fd);
 
-  // Allocate another host memory buffer for ICsdata
-  typedef Kokkos::View<double*, Kokkos::DefaultExecutionSpace> HostArr;
-  HostArr ICsdata("ICsdata", total_bytes / sizeof(double));
+  // Allocate execution-space memory (on the device)
+  using DeviceArr = Kokkos::View<double*, Kokkos::DefaultExecutionSpace>;
+  DeviceArr ICsdata("ICsdata", size);
 
-  // Copy directly within host memory
-  Kokkos::deep_copy(ICsdata, hICs);
+  // Copy chunked data to device memory
+  size_t offset = 0;
+  for (size_t i = 0; i < num_chunks; i++) {
+      size_t chunk_extent = hICs_chunks[i].extent(0);
+      Kokkos::deep_copy(Kokkos::subview(ICsdata, std::make_pair(offset, offset + chunk_extent)), hICs_chunks[i]);
+      offset += chunk_extent;
+  }
 
   std::cout << "Initialized ICs data of size: " << ICsdata.extent(0) << " elements." << std::endl;
 
-  // Assign values to primary variables
+  // Parallel assignment of initial conditions
   Kokkos::parallel_for(
       "WtOpenRun::ProblemGenerator",
       Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
-          {0, kb.s, jb.s, ib.s}, {num_blocks, kb.e + 1, jb.e + 1, ib.e + 1}),
+          {0, 0, 0, 0}, {num_blocks, Ncellx3, Ncellx2, Ncellx1}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
 
-          const auto &u = cons(b);
-          const auto &coords = cons.GetCoords(b);
-          const int global_x = (coords.Xc<1>(i) - lsizex1/2 - x1min)/lsizex1;
-          const int global_y = (coords.Xc<2>(j) - lsizex2/2 - x2min)/lsizex2;
-          const int global_z = (coords.Xc<3>(k) - lsizex3/2 - x3min)/lsizex3;
+          const auto &u = cons(b); // Replace with actual reference to your array
+          const auto &coords = cons.GetCoords(b); // Replace with actual coordinates
 
-          int indexDN = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 0;
-          int indexM2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 1;
-          int indexIEN1 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 2;
-          int indexIEN2 = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 3;
-          int indexNHYDRO = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq + 4;
+          const int global_x = (coords.Xc<1>(i) - lsizex1 / 2 - x1min) / lsizex1;
+          const int global_y = (coords.Xc<2>(j) - lsizex2 / 2 - x2min) / lsizex2;
+          const int global_z = (coords.Xc<3>(k) - lsizex3 / 2 - x3min) / lsizex3;
 
-          u(IDN, k, j, i) = ICsdata(indexDN) * d_cgs_factor;
-          u(IM2, k, j, i) = ICsdata(indexM2) * m_cgs_factor;
-          u(IEN, k, j, i) = ICsdata(indexIEN1) * e_cgs_factor + ICsdata(indexIEN2) / mbar_over_kb * d_cgs_factor;
-          
-          // Init passive scalars
-          for (auto n = nhydro; n < nhydro + nscalars; n++) {
-              u(n, k, j, i) = ICsdata(indexNHYDRO) * u(IDN, k, j, i);
-          }
+          int index_base = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq;
+          u(IDN, k, j, i) = ICsdata(index_base) * d_cgs_factor;
+          u(IM2, k, j, i) = ICsdata(index_base + 1) * m_cgs_factor;
+          u(IEN, k, j, i) = ICsdata(index_base + 2) * e_cgs_factor + ICsdata(index_base + 3) / mbar_over_kb * d_cgs_factor;
+
       });
 
-  std::cout << "Initial conditions finalized. \n" << std::endl;
+  std::cout << "Initial conditions finalized." << std::endl;
+
 
 
 
