@@ -382,6 +382,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   // Allocate execution-space memory (on the device)
   using DeviceArr = Kokkos::View<double*, Kokkos::DefaultExecutionSpace>;
   DeviceArr ICsdata("ICsdata", size);
+  Kokkos::fence();
 
   // Copy chunked data to device memory
   size_t offset = 0;
@@ -407,13 +408,24 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
           const int global_y = (coords.Xc<2>(j) - lsizex2 / 2 - x2min) / lsizex2;
           const int global_z = (coords.Xc<3>(k) - lsizex3 / 2 - x3min) / lsizex3;
 
+          if (global_x < 0 || global_x >= Ncellx1 ||
+            global_y < 0 || global_y >= Ncellx2 ||
+            global_z < 0 || global_z >= Ncellx3) {
+            printf("Invalid global indices: x=%d, y=%d, z=%d\n", global_x, global_y, global_z);
+            return;
+          }
+
           int index_base = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq;
+          if (index_base < 0 || index_base >= size) {
+                printf("Out of bounds: index_base=%d, size=%zu\n", index_base, size);
+                return;
+            }
           u(IDN, k, j, i) = ICsdata(index_base) * d_cgs_factor;
           u(IM2, k, j, i) = ICsdata(index_base + 1) * m_cgs_factor;
           u(IEN, k, j, i) = ICsdata(index_base + 2) * e_cgs_factor + ICsdata(index_base + 3) / mbar_over_kb * d_cgs_factor;
 
       });
-
+  Kokkos::fence();
   std::cout << "Initial conditions finalized." << std::endl;
 
 
