@@ -397,11 +397,11 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   Kokkos::parallel_for(
       "WtOpenRun::ProblemGenerator",
       Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
-          {0, 0, 0, 0}, {num_blocks, Ncellx3, Ncellx2, Ncellx1}),
+          {0, kb.s, jb.s, ib.s}, {num_blocks, kb.e + 1, jb.e + 1, ib.e + 1}),
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
 
-          const auto &u = cons(b); // Replace with actual reference to your array
-          const auto &coords = cons.GetCoords(b); // Replace with actual coordinates
+          const auto &u = cons(b); 
+          const auto &coords = cons.GetCoords(b);
 
           const int global_x = (coords.Xc<1>(i) - lsizex1 / 2 - x1min) / lsizex1;
           const int global_y = (coords.Xc<2>(j) - lsizex2 / 2 - x2min) / lsizex2;
