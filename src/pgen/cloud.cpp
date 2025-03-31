@@ -43,6 +43,24 @@ Real Bz = 0.0;
 
 void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   // no access to package in this function so we use a local units object
+
+        // Get the number of processes
+    int world_size;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+    // Get the rank of the process
+    int world_rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+    // Get the name of the processor
+    char processor_name[MPI_MAX_PROCESSOR_NAME];
+    int name_len;
+    MPI_Get_processor_name(processor_name, &name_len);
+
+    // Print off a hello world message
+    printf("Hello world from processor %s, rank %d out of %d processors\n",
+        processor_name, world_rank, world_size);
+        
   Units units(pin);
 
   auto gamma = pin->GetReal("hydro", "gamma");
@@ -141,6 +159,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
     std::cout << msg.str();
   }
+
+
+
 }
 
 //----------------------------------------------------------------------------------------

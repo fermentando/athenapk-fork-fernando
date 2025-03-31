@@ -25,6 +25,7 @@ std::function<AmrTag(MeshBlockData<Real> *mbd)> ProblemCheckRefinementBlock = nu
 } // namespace Hydro
 
 int main(int argc, char *argv[]) {
+
   using parthenon::ParthenonManager;
   using parthenon::ParthenonStatus;
   ParthenonManager pman;
