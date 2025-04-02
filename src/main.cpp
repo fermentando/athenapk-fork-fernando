@@ -74,7 +74,6 @@ int main(int argc, char *argv[]) {
                                               "wtopenrun_inflow_x2", wtopenrun::InflowWindX2);
     Hydro::ProblemInitPackageData = wtopenrun::ProblemInitPackageData;
     Hydro::ProblemSourceFirstOrder = wtopenrun::FrameBoosting;
-    Hydro::ProblemCheckRefinementBlock = wtopenrun::ProblemCheckRefinementBlock;
   } else if (problem == "blast") {
     pman.app_input->InitUserMeshData = blast::InitUserMeshData;
     pman.app_input->ProblemGenerator = blast::ProblemGenerator;

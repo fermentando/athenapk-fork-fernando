@@ -480,31 +480,6 @@ void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
 
 
 
-parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
-  auto pmb = mbd->GetBlockPointer();
-  auto w = mbd->Get("prim").data;
-
-  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
-  IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
-  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
-
-  auto hydro_pkg = pmb->packages.Get("Hydro");
-  const auto nhydro = hydro_pkg->Param<int>("nhydro");
-
-  Real maxscalar = 0.0;
-  pmb->par_reduce(
-      "WTOpenRun refinement", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e + 1,
-      KOKKOS_LAMBDA(const int k, const int j, const int i, Real &lmaxscalar) {
-        // scalar is first variable after hydro vars
-        lmaxscalar = std::max(lmaxscalar, w(nhydro, k, j, i));
-      },
-      Kokkos::Max<Real>(maxscalar));
-
-  if (maxscalar > 0.01) return parthenon::AmrTag::refine;
-  if (maxscalar < 0.001) return parthenon::AmrTag::derefine;
-  return parthenon::AmrTag::same;
-};
-
 //========================================================================================
 //! \fn void ApplyFrameBoost(parthenon::MeshData<parthenon::Real> *md)
 //  \brief Function to initialize problem-specific data in mesh class.  Can also be used
@@ -657,7 +632,7 @@ void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::Si
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
 // we'll use this enum to identify the various vars.
-enum class HstQuan {mc, Mcx1, Mcx2, Mcx3, vboost, mcout};
+enum class HstQuan {mc, Mcx1, Mcx2, Mcx3, vboost, mcout, mwout};
 
 // Compute the local sum of cloud mass
 template <HstQuan hst_quan>
@@ -667,7 +642,8 @@ Real WindTunnelHst(MeshData<Real> *md) {
   Real T_cloud = hydro_pkg->Param<Real>("Tcloud");
   Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
 
-  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  const auto &prims_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
 
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
@@ -678,7 +654,8 @@ Real WindTunnelHst(MeshData<Real> *md) {
   // thus, we're only concerned with local sums
   Real sum;
 
-  if (hst_quan == HstQuan::mcout){
+  if (hst_quan == HstQuan::mcout || hst_quan == HstQuan::mwout)
+  {
     IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::outer_x2);
     IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::outer_x2);
     IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::outer_x2);
@@ -687,35 +664,44 @@ Real WindTunnelHst(MeshData<Real> *md) {
     const auto x2max = pmesh->mesh_size.xmax(X2DIR);
 
 
-    pmb->par_reduce(
-      "hst_outflow_y", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+  pmb->par_reduce(
+      "WTopenrun::outflowing_gas", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+        const auto &prims = prims_pack(b);
         const auto &cons = cons_pack(b);
-        const auto &coords = cons_pack.GetCoords(b);
-        const Real rho = cons(IDN, k, j, i);    
+        const auto &coords = prims_pack.GetCoords(b);
+        const Real rho = prims(IDN, k, j, i);    
         const Real My = cons(IM2, k, j, i);      
-        const Real temp = mean_molecular_mass_by_kb * cons(IPR, k, j, i) / rho; 
+        const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / rho; 
 
-        if (coords.Xc<2>(j) > x2max && My > 0.0 && temp <= 2 * T_cloud) {
-          const Real mass = rho * coords.CellVolume(k, j, i); 
-          lsum += mass; 
+        if (coords.Xc<2>(j) > x2max && My > 0.0) {
+          if (hst_quan == HstQuan::mcout && temp <= 5 * T_cloud){
+            const Real mass = rho * coords.CellVolume(k, j, i); 
+            lsum += mass; 
+          }
+          if (hst_quan == HstQuan::mwout && temp > 5 * T_cloud && temp <= 10 * T_cloud){
+            const Real mass = rho * coords.CellVolume(k, j, i); 
+            lsum += mass; 
+          }
         }
       },
     sum);
   }
 
   else{
+
   pmb->par_reduce(
-      "hst_windtunnel", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+    "WTOpenRun::hst_calc", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+    KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
         const auto &cons = cons_pack(b);
-        const auto &coords = cons_pack.GetCoords(b);
-        const Real temp = mean_molecular_mass_by_kb * cons(IPR, k, j, i) / cons(IDN, k, j, i);
+        const auto &prims = prims_pack(b);
+        const auto &coords = prims_pack.GetCoords(b);
+        const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / prims(IDN, k, j, i);
 
         if (temp <= 2*T_cloud) { 
 
           if (hst_quan == HstQuan::mc) {
-            lsum += cons(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            lsum += prims(IDN, k, j, i) * coords.CellVolume(k, j, i);
           }
           if (hst_quan == HstQuan::Mcx1) {
             lsum += cons(IM1, k, j, i) *  coords.CellVolume(k, j, i);
@@ -753,6 +739,8 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
                                                     ComputeCloudMassWeightedVel, "vboost"));
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     WindTunnelHst<HstQuan::mcout>, "mcout"));
+    hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    WindTunnelHst<HstQuan::mwout>, "mwout"));
   pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
 
 }
