@@ -32,6 +32,7 @@ ix3_bc = outflow
 ox3_bc = outflow
 
 pack_size = -1      # number of MeshBlock per MeshBlockPack
+tracking = true
 
 <parthenon/meshblock>
 nx1=64
