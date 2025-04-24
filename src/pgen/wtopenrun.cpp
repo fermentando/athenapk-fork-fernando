@@ -12,12 +12,14 @@
 #include <cmath>     // log
 #include <cstring>   // strcmp()
 #include <fstream>   // bin file
+#include <adios2.h>
 
 //I/O for ICs reader
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h> 
+#include "globals.hpp"
 
 // Parthenon headers
 #include "basic_types.hpp"
@@ -29,8 +31,11 @@
 #include <parthenon/package.hpp>
 #include <random>
 #include <sstream>
+#include <iostream>
 #include <string>
 #include <globals.hpp>
+
+
 
 // AthenaPK headers
 #include "../main.hpp"
@@ -234,32 +239,6 @@ std::pair<Real, Real> cold_gas_extent_y(MeshData<Real> *md) {
   return {cgymin, cgymax - cgymin};
 }
 
-// Function to check available memory (only works for CUDA/HIP devices)
-bool checkGpuMemory(size_t required_bytes) {
-#if defined(KOKKOS_ENABLE_CUDA)
-    size_t free_mem, total_mem;
-    if (cudaMemGetInfo(&free_mem, &total_mem) != cudaSuccess) {
-        std::cerr << "cudaMemGetInfo failed!" << std::endl;
-        return false;
-    }
-    std::cout << "GPU Memory: " << free_mem / (1024.0 * 1024) << " MiB free, "
-              << total_mem / (1024.0 * 1024) << " MiB total." << std::endl;
-    return free_mem >= required_bytes;
-#elif defined(KOKKOS_ENABLE_HIP)
-    size_t free_mem, total_mem;
-    if (hipMemGetInfo(&free_mem, &total_mem) != hipSuccess) {
-        std::cerr << "hipMemGetInfo failed!" << std::endl;
-        return false;
-    }
-    std::cout << "HIP GPU Memory: " << free_mem / (1024.0 * 1024) << " MiB free, "
-              << total_mem / (1024.0 * 1024) << " MiB total." << std::endl;
-    return free_mem >= required_bytes;
-#else
-    return true; // Assume CPU has enough memory
-#endif
-}
-
-
 
 //----------------------------------------------------------------------------------------
 //! \fn void MeshBlock::ProblemGenerator(ParameterInput *pin)
@@ -270,164 +249,113 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   Units units(pin);
 
   const std::string ics_filename = pin->GetString("job", "bin_input_file");
-
   auto d_cgs_factor = 1. / units.code_density_cgs();
   auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
   auto e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
 
-  auto pmb = md->GetBlockData(0)->GetBlockPointer();
-  auto hydro_pkg = pmb->packages.Get("Hydro");
-
-  const auto mbar_over_kb = hydro_pkg->Param<Real>("mbar_over_kb");
-  const auto nhydro = hydro_pkg->Param<int>("nhydro");
-  const auto nscalars = hydro_pkg->Param<int>("nscalars");
-  const auto num_blocks = md->NumBlocks();
- 
-  auto ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
-  auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
-  auto kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
-
-  const auto Ncellx1 = pmesh->mesh_size.nx(X1DIR);
-  const auto Ncellx2 = pmesh->mesh_size.nx(X2DIR);
-  const auto Ncellx3 = pmesh->mesh_size.nx(X3DIR);
-
-  printf("Dimensions of interior domain: %d, %d, %d. \n", Ncellx1, Ncellx2, Ncellx3);
+  const auto gnx1 = pin->GetInteger("parthenon/mesh", "nx1");
+  const auto gnx2 = pin->GetInteger("parthenon/mesh", "nx2");
+  const auto gnx3 = pin->GetInteger("parthenon/mesh", "nx3");
 
 
-  const auto lsizex1 = (pmesh->mesh_size.xmax(X1DIR) - pmesh->mesh_size.xmin(X1DIR))/Ncellx1;
-  const auto lsizex2 = (pmesh->mesh_size.xmax(X2DIR) - pmesh->mesh_size.xmin(X2DIR))/Ncellx2;
-  const auto lsizex3 = (pmesh->mesh_size.xmax(X3DIR) - pmesh->mesh_size.xmin(X3DIR))/Ncellx3;
+  //Get meshblock for GPU
+  for (int b = 0; b < md->NumBlocks() ; b++) {
 
-  const auto x1min = pmesh->mesh_size.xmin(X1DIR);
-  const auto x2min = pmesh->mesh_size.xmin(X2DIR);
-  const auto x3min = pmesh->mesh_size.xmin(X3DIR);
+    auto pmb = md->GetBlockData(b)->GetBlockPointer();
+    auto hydro_pkg = pmb->packages.Get("Hydro");
 
-
-  // initialize conserved variables
-  auto &mbd = pmb->meshblock_data.Get();
-  auto const &cons = md->PackVariables(std::vector<std::string>{"cons"});
-
-
+    const auto mbar_over_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+    const auto nhydro = hydro_pkg->Param<int>("nhydro");
+    const auto nscalars = hydro_pkg->Param<int>("nscalars");
+    const auto num_blocks = md->NumBlocks();
+    const bool mhd_enabled = hydro_pkg->Param<Fluid>("fluid") == Fluid::glmmhd;
+    if (((Bx != 0.0) || (By != 0.0) || (Bz != 0.0)) && !mhd_enabled) {
+      PARTHENON_FAIL("Requested to initialize magnetic fields by `cloud/plasma_beta > 0`, "
+                    "but `hydro/fluid` is not supporting MHD.");
+    }
   
-  // Quantities to initialize
-  int Nq = 4;
-  size_t size = Ncellx1 * Ncellx2 * Ncellx3 * Nq;
-  size_t total_bytes = size * sizeof(double);
+    const auto loc = pmb->pmy_mesh->Forest().GetLegacyTreeLocation(pmb->loc);
+    const auto gis = loc.lx1() * pmb->block_size.nx(X1DIR);
+    const auto gjs = loc.lx2() * pmb->block_size.nx(X2DIR);
+    const auto gks = loc.lx3() * pmb->block_size.nx(X3DIR);
 
-  // Allocate host memory in chunks
-  using HostMemSpace = Kokkos::HostSpace;
-  using HostPinnedArr = Kokkos::View<double*, HostMemSpace>;
+    //Assign meshblock values to execution space
+    const int fields = 4;
+    const int total_dim = 4;
+    unsigned long offset[total_dim], count[total_dim];
 
-  size_t chunk_size = 64 * 1024;  // Max chunk size (adjust as needed)
-  size_t num_chunks = (size + chunk_size - 1) / chunk_size;
+    offset[3] = 0;
+    offset[0] = static_cast<unsigned long>(gks);
+    offset[1] = static_cast<unsigned long>(gjs);
+    offset[2] = static_cast<unsigned long>(gis);
 
-  // Create a vector of chunked Views
-  std::vector<HostPinnedArr> hICs_chunks(num_chunks);
-  for (size_t i = 0; i < num_chunks; i++) {
-      size_t this_chunk_size = std::min(chunk_size, size - i * chunk_size);
-      hICs_chunks[i] = HostPinnedArr("hICs_chunk", this_chunk_size);
-  }
+    count[3] = fields; 
+    count[0] = static_cast<unsigned long>(pmb->block_size.nx(X3DIR));
+    count[1] = static_cast<unsigned long>(pmb->block_size.nx(X2DIR));
+    count[2] = static_cast<unsigned long>(pmb->block_size.nx(X1DIR));
+    
+    adios2::fstream iStream(ics_filename, adios2::fstream::in, MPI_COMM_WORLD);
+    adios2::fstep iStep;
 
-  // Open and memory-map the file
-  int fd = open(ics_filename.c_str(), O_RDONLY);
-  if (fd == -1) {
-      std::cerr << "Failed to open ICs file." << std::endl;
-      return;
-  }
 
-  // Get file size
-  struct stat file_stat;
-  if (fstat(fd, &file_stat) == -1) {
-      close(fd);
-      std::cerr << "Failed to get file size." << std::endl;
-      return;
-  }
-  if (file_stat.st_size < total_bytes) {
-      close(fd);
-      std::cerr << "ICs file is smaller than expected data size." << std::endl;
-      return;
-  }
+    while (adios2::getstep(iStream, iStep)) {
 
-  // Memory-map the file in chunks
-  size_t bytes_read = 0;
-  size_t doubles_read = 0;
 
-  while (bytes_read < total_bytes) {
-      size_t bytes_to_read = std::min(chunk_size * sizeof(double), total_bytes - bytes_read);
+      const adios2::Dims start{offset[0], offset[1], offset[2], offset[3]};
+      const adios2::Dims counts{count[0], count[1], count[2], count[3]};
+      std::string varname = ics_filename;
+      size_t pos = varname.find(".bp");
+      auto ICsdata = iStream.read<double>(varname.erase(pos), start, counts);
 
-      void* file_data = mmap(nullptr, bytes_to_read, PROT_READ, MAP_PRIVATE, fd, bytes_read);
-      if (file_data == MAP_FAILED) {
-          close(fd);
-          std::cerr << "Memory mapping failed." << std::endl;
-          return;
+
+
+
+      // Create initial conditions for meshblock from these values:
+      // initialize conserved variables
+      auto &mbd = pmb->meshblock_data.Get();
+      auto &u_dev = mbd->Get("cons").data;
+      auto &coords = pmb->coords;
+      // initializing on host
+      auto u = u_dev.GetHostMirrorAndCopy();
+
+
+      IndexRange ib = mbd->GetBoundsI(IndexDomain::interior);
+      IndexRange jb = mbd->GetBoundsJ(IndexDomain::interior);
+      IndexRange kb = mbd->GetBoundsK(IndexDomain::interior);
+
+
+      // Read problem parameters
+      for (int k = kb.s; k <= kb.e; k++) {
+        for (int j = jb.s; j <= jb.e; j++) {
+          for (int i = ib.s; i <= ib.e; i++) {
+
+            int index_base = (((k - kb.s) * count[1] + (j - jb.s)) * count[2] + (i - ib.s)) * count[3];
+
+            PARTHENON_REQUIRE_THROWS(ICsdata[index_base] > 0., "Densities below 0");
+
+            u(IDN, k, j, i) = ICsdata[index_base] * d_cgs_factor;
+            u(IM2, k, j, i) = ICsdata[index_base + 1] * m_cgs_factor;
+            u(IEN, k, j, i) = ICsdata[index_base + 2] * e_cgs_factor+ ICsdata[index_base + 3] / mbar_over_kb * d_cgs_factor;
+
+            if (mhd_enabled) {
+              u(IB1, k, j, i) = Bx;
+              u(IB2, k, j, i) = By;
+              u(IB3, k, j, i) = Bz;
+              u(IEN, k, j, i) += 0.5 * (Bx * Bx + By * By + Bz * Bz);
+            }
+
+          }
+        }
       }
 
-      madvise(file_data, bytes_to_read, MADV_SEQUENTIAL);
-
-      double* src = reinterpret_cast<double*>(file_data);
-
-      size_t doubles_to_read = bytes_to_read / sizeof(double);
-      std::memcpy(hICs_chunks[doubles_read / chunk_size].data(), src, bytes_to_read);
-
-      doubles_read += doubles_to_read;
-      bytes_read += bytes_to_read;
-
-      munmap(file_data, bytes_to_read);  // Free memory after reading each chunk
+    // copy initialized vars to device
+    u_dev.DeepCopy(u);
+    break;
+    }
+    iStream.close();
   }
 
-  close(fd);
-
-  // Allocate execution-space memory (on the device)
-  using DeviceArr = Kokkos::View<double*, Kokkos::DefaultExecutionSpace>;
-  DeviceArr ICsdata("ICsdata", size);
-  Kokkos::fence();
-
-  // Copy chunked data to device memory
-  size_t offset = 0;
-  for (size_t i = 0; i < num_chunks; i++) {
-      size_t chunk_extent = hICs_chunks[i].extent(0);
-      Kokkos::deep_copy(Kokkos::subview(ICsdata, std::make_pair(offset, offset + chunk_extent)), hICs_chunks[i]);
-      offset += chunk_extent;
-  }
-
-  std::cout << "Initialized ICs data of size: " << ICsdata.extent(0) << " elements." << std::endl;
-
-  // Parallel assignment of initial conditions
-  Kokkos::parallel_for(
-      "WtOpenRun::ProblemGenerator",
-      Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
-          {0, kb.s, jb.s, ib.s}, {num_blocks, kb.e + 1, jb.e + 1, ib.e + 1}),
-      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
-
-          const auto &u = cons(b); 
-          const auto &coords = cons.GetCoords(b);
-
-          const int global_x = (coords.Xc<1>(i) - lsizex1 / 2 - x1min) / lsizex1;
-          const int global_y = (coords.Xc<2>(j) - lsizex2 / 2 - x2min) / lsizex2;
-          const int global_z = (coords.Xc<3>(k) - lsizex3 / 2 - x3min) / lsizex3;
-
-          if (global_x < 0 || global_x >= Ncellx1 ||
-            global_y < 0 || global_y >= Ncellx2 ||
-            global_z < 0 || global_z >= Ncellx3) {
-            printf("Invalid global indices: x=%d, y=%d, z=%d\n", global_x, global_y, global_z);
-            return;
-          }
-
-          int index_base = ((global_z * Ncellx2 + global_y) * Ncellx1 + global_x) * Nq;
-          if (index_base < 0 || index_base >= size) {
-                printf("Out of bounds: index_base=%d, size=%zu\n", index_base, size);
-                return;
-            }
-          u(IDN, k, j, i) = ICsdata(index_base) * d_cgs_factor;
-          u(IM2, k, j, i) = ICsdata(index_base + 1) * m_cgs_factor;
-          u(IEN, k, j, i) = ICsdata(index_base + 2) * e_cgs_factor + ICsdata(index_base + 3) / mbar_over_kb * d_cgs_factor;
-
-      });
-  Kokkos::fence();
-  std::cout << "Initial conditions finalized." << std::endl;
-
-
-
+}
 
     //auto cg_width = cold_gas_extent_y(md);
     //parthenon::Real cgmin = cg_width.first;
@@ -439,7 +367,6 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
     //std::cout << "Benchmark for frame boost calculation at "<< (wfrac * cg_extent + abs(cgmin)) / (lsizex2 * Ncellx2) << "L_y,box. \n" << std::endl;
   
-}
 
 void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
