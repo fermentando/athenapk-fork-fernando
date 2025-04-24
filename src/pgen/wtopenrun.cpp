@@ -146,7 +146,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   if (rescale_code_time_to_tcc) {
     msg << "#### INFO:" << std::endl;
     Real tlim_orig = pin->GetReal("parthenon/time", "tlim");
-    Real tlim_rescaled = tlim_orig * t_cc;
+    Real tlim_rescaled = tlim_orig * t_cc * depth;
     // rescale sim time limit
     pin->SetReal("parthenon/time", "tlim", tlim_rescaled);
     // rescale dt of each output block
@@ -154,7 +154,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
     while (pib != nullptr) {
       if (pib->block_name.compare(0, 16, "parthenon/output") == 0) {
         auto dt = pin->GetReal(pib->block_name, "dt");
-        pin->SetReal(pib->block_name, "dt", dt * t_cc);
+        pin->SetReal(pib->block_name, "dt", dt * t_cc * depth);
       }
       pib = pib->pnext; // move to next input block name
     }
