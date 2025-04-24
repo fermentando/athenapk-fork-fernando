@@ -285,67 +285,68 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     unsigned long offset[total_dim], count[total_dim];
 
     offset[3] = 0;
-    offset[2] = static_cast<unsigned long>(gks);
+    offset[0] = static_cast<unsigned long>(gks);
     offset[1] = static_cast<unsigned long>(gjs);
-    offset[0] = static_cast<unsigned long>(gis);
+    offset[2] = static_cast<unsigned long>(gis);
 
     count[3] = fields; 
-    count[2] = static_cast<unsigned long>(pmb->block_size.nx(X3DIR));
+    count[0] = static_cast<unsigned long>(pmb->block_size.nx(X3DIR));
     count[1] = static_cast<unsigned long>(pmb->block_size.nx(X2DIR));
-    count[0] = static_cast<unsigned long>(pmb->block_size.nx(X1DIR));
-
+    count[2] = static_cast<unsigned long>(pmb->block_size.nx(X1DIR));
+    
     adios2::fstream iStream(ics_filename, adios2::fstream::in, MPI_COMM_WORLD);
     adios2::fstep iStep;
-    
+
 
     while (adios2::getstep(iStream, iStep)) {
 
 
       const adios2::Dims start{offset[0], offset[1], offset[2], offset[3]};
       const adios2::Dims counts{count[0], count[1], count[2], count[3]};
-      auto ICsdata = iStream.read<double>("myvarname", start, counts);
-
-            // Just to be sure we break (to not read any other steps if present in the bp file)
-
-
-
-    // Create initial conditions for meshblock from these values:
-    // initialize conserved variables
-    auto &mbd = pmb->meshblock_data.Get();
-    auto &u_dev = mbd->Get("cons").data;
-    auto &coords = pmb->coords;
-    // initializing on host
-    auto u = u_dev.GetHostMirrorAndCopy();
+      std::string varname = ics_filename;
+      size_t pos = varname.find(".bp");
+      auto ICsdata = iStream.read<double>(varname.erase(pos), start, counts);
 
 
-    IndexRange ib = mbd->GetBoundsI(IndexDomain::interior);
-    IndexRange jb = mbd->GetBoundsJ(IndexDomain::interior);
-    IndexRange kb = mbd->GetBoundsK(IndexDomain::interior);
 
 
-    // Read problem parameters
-    for (int k = kb.s; k <= kb.e; k++) {
-      for (int j = jb.s; j <= jb.e; j++) {
-        for (int i = ib.s; i <= ib.e; i++) {
+      // Create initial conditions for meshblock from these values:
+      // initialize conserved variables
+      auto &mbd = pmb->meshblock_data.Get();
+      auto &u_dev = mbd->Get("cons").data;
+      auto &coords = pmb->coords;
+      // initializing on host
+      auto u = u_dev.GetHostMirrorAndCopy();
 
-          int index_base = (((i - ib.s) * count[1] + (j - jb.s)) * count[2] + (k - kb.s)) * count[3];
 
-          PARTHENON_REQUIRE_THROWS(ICsdata[index_base] > 0., "Densities below 0");
+      IndexRange ib = mbd->GetBoundsI(IndexDomain::interior);
+      IndexRange jb = mbd->GetBoundsJ(IndexDomain::interior);
+      IndexRange kb = mbd->GetBoundsK(IndexDomain::interior);
 
-          u(IDN, k, j, i) = ICsdata[index_base] * d_cgs_factor;
-          u(IM2, k, j, i) = ICsdata[index_base + 1] * m_cgs_factor;
-          u(IEN, k, j, i) = ICsdata[index_base + 2] * e_cgs_factor+ ICsdata[index_base + 3] / mbar_over_kb * d_cgs_factor;
 
-          if (mhd_enabled) {
-            u(IB1, k, j, i) = Bx;
-            u(IB2, k, j, i) = By;
-            u(IB3, k, j, i) = Bz;
-            u(IEN, k, j, i) += 0.5 * (Bx * Bx + By * By + Bz * Bz);
+      // Read problem parameters
+      for (int k = kb.s; k <= kb.e; k++) {
+        for (int j = jb.s; j <= jb.e; j++) {
+          for (int i = ib.s; i <= ib.e; i++) {
+
+            int index_base = (((k - kb.s) * count[1] + (j - jb.s)) * count[2] + (i - ib.s)) * count[3];
+
+            PARTHENON_REQUIRE_THROWS(ICsdata[index_base] > 0., "Densities below 0");
+
+            u(IDN, k, j, i) = ICsdata[index_base] * d_cgs_factor;
+            u(IM2, k, j, i) = ICsdata[index_base + 1] * m_cgs_factor;
+            u(IEN, k, j, i) = ICsdata[index_base + 2] * e_cgs_factor+ ICsdata[index_base + 3] / mbar_over_kb * d_cgs_factor;
+
+            if (mhd_enabled) {
+              u(IB1, k, j, i) = Bx;
+              u(IB2, k, j, i) = By;
+              u(IB3, k, j, i) = Bz;
+              u(IEN, k, j, i) += 0.5 * (Bx * Bx + By * By + Bz * Bz);
+            }
+
           }
-
         }
       }
-    }
 
     // copy initialized vars to device
     u_dev.DeepCopy(u);
