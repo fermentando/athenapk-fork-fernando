@@ -151,7 +151,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   if (rescale_code_time_to_tcc) {
     msg << "#### INFO:" << std::endl;
     Real tlim_orig = pin->GetReal("parthenon/time", "tlim");
-    Real tlim_rescaled = tlim_orig * t_cc * depth;
+    Real tlim_rescaled = tlim_orig * t_cc;
     // rescale sim time limit
     pin->SetReal("parthenon/time", "tlim", tlim_rescaled);
     // rescale dt of each output block
@@ -159,7 +159,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
     while (pib != nullptr) {
       if (pib->block_name.compare(0, 16, "parthenon/output") == 0) {
         auto dt = pin->GetReal(pib->block_name, "dt");
-        pin->SetReal(pib->block_name, "dt", dt * t_cc * depth);
+        pin->SetReal(pib->block_name, "dt", dt * t_cc);
       }
       pib = pib->pnext; // move to next input block name
     }
@@ -249,6 +249,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   Units units(pin);
 
   const std::string ics_filename = pin->GetString("job", "bin_input_file");
+
   auto d_cgs_factor = 1. / units.code_density_cgs();
   auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
   auto e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
@@ -282,30 +283,24 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     //Assign meshblock values to execution space
     const int fields = 4;
     const int total_dim = 4;
-    unsigned long offset[total_dim], count[total_dim];
 
-    offset[3] = 0;
-    offset[0] = static_cast<unsigned long>(gks);
-    offset[1] = static_cast<unsigned long>(gjs);
-    offset[2] = static_cast<unsigned long>(gis);
-
-    count[3] = fields; 
-    count[0] = static_cast<unsigned long>(pmb->block_size.nx(X3DIR));
-    count[1] = static_cast<unsigned long>(pmb->block_size.nx(X2DIR));
-    count[2] = static_cast<unsigned long>(pmb->block_size.nx(X1DIR));
+    const int nz = pmb->block_size.nx(X3DIR);
+    const int ny = pmb->block_size.nx(X2DIR);
+    const int nx = pmb->block_size.nx(X1DIR);
     
     adios2::fstream iStream(ics_filename, adios2::fstream::in, MPI_COMM_WORLD);
     adios2::fstep iStep;
-
-
     while (adios2::getstep(iStream, iStep)) {
 
 
-      const adios2::Dims start{offset[0], offset[1], offset[2], offset[3]};
-      const adios2::Dims counts{count[0], count[1], count[2], count[3]};
+      const adios2::Dims start{0, static_cast<unsigned long>(gks), static_cast<unsigned long>(gjs),
+                               static_cast<unsigned long>(gis)};
+      const adios2::Dims counts{static_cast<unsigned long>(fields), static_cast<unsigned long>(nz),
+                                   static_cast<unsigned long>(ny), static_cast<unsigned long>(nx)};
       std::string varname = ics_filename;
       size_t pos = varname.find(".bp");
       auto ICsdata = iStream.read<double>(varname.erase(pos), start, counts);
+      printf("From reader: %ld, %ld, %ld\n", gks, gjs, gis);
 
 
 
@@ -329,13 +324,16 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
         for (int j = jb.s; j <= jb.e; j++) {
           for (int i = ib.s; i <= ib.e; i++) {
 
-            int index_base = (((k - kb.s) * count[1] + (j - jb.s)) * count[2] + (i - ib.s)) * count[3];
+            int index_base_0 = ((0 * nz + (k - kb.s)) * ny + (j - jb.s)) * nx + (i - ib.s);
+            int index_base_1 = ((1 * nz + (k - kb.s)) * ny + (j - jb.s)) * nx + (i - ib.s);
+            int index_base_2 = ((2 * nz + (k - kb.s)) * ny + (j - jb.s)) * nx + (i - ib.s);
+            int index_base_3 = ((3 * nz + (k - kb.s)) * ny + (j - jb.s)) * nx + (i - ib.s);
 
-            PARTHENON_REQUIRE_THROWS(ICsdata[index_base] > 0., "Densities below 0");
+            PARTHENON_REQUIRE_THROWS(ICsdata[index_base_0] > 0., "Densities below 0");
 
-            u(IDN, k, j, i) = ICsdata[index_base] * d_cgs_factor;
-            u(IM2, k, j, i) = ICsdata[index_base + 1] * m_cgs_factor;
-            u(IEN, k, j, i) = ICsdata[index_base + 2] * e_cgs_factor+ ICsdata[index_base + 3] / mbar_over_kb * d_cgs_factor;
+            u(IDN, k, j, i) = ICsdata[index_base_0] * d_cgs_factor;
+            u(IM2, k, j, i) = ICsdata[index_base_1] * m_cgs_factor;
+            u(IEN, k, j, i) = ICsdata[index_base_2] * e_cgs_factor+ ICsdata[index_base_3] / mbar_over_kb * d_cgs_factor;
 
             if (mhd_enabled) {
               u(IB1, k, j, i) = Bx;
