@@ -290,7 +290,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     const int nz = pmb->block_size.nx(X3DIR);
     const int ny = pmb->block_size.nx(X2DIR);
     const int nx = pmb->block_size.nx(X1DIR);
-    
+
     if (( loc.lx1() < 0) || ( loc.lx2() < 0) || ( loc.lx3() < 0)) {
       printf("Value of loc1 is not valid... \n");
       continue;
@@ -313,8 +313,6 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
       std::string varname = ics_filename;
       size_t pos = varname.find(".bp");
       auto ICsdata = iStream.read<double>(varname.erase(pos), start, counts);
-      printf("These are locs %d, %d, %d ", loc3, loc2, loc1);
-      printf("from cell global positions: %d, %d, %d\n", gks, gjs, gis);
 
 
 
@@ -338,15 +336,12 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
         for (int j = 0; j < ny; j++) {
           for (int i = 0; i < nx; i++) {
 
-            //int loc_ind = (loc3 + loc2 + loc1) * fields ; 
-            int loc_ind = ((loc1 *  gny/ny  + loc2) * gnx/nx + loc3)* fields; 
 
-            int index_base_0 = (((loc_ind + 0) * nz + (k)) * ny + (j)) * nx + (i);
-            int index_base_1 = (((loc_ind + 1) * nz + (k)) * ny + (j)) * nx + (i);
-            int index_base_2 = (((loc_ind + 2) * nz + (k)) * ny + (j)) * nx + (i);
-            int index_base_3 = (((loc_ind + 3) * nz + (k)) * ny + (j)) * nx + (i);
+            int index_base_0 = ((0 * nz + k) * ny + j) * nx + i;
+            int index_base_1 = ((1 * nz + k) * ny + j) * nx + i;
+            int index_base_2 = ((2 * nz + k) * ny + j) * nx + i;
+            int index_base_3 = ((3 * nz + k) * ny + j) * nx + i;
 
-            //printf("This is index: %d \n", index_base_0);
             PARTHENON_REQUIRE_THROWS(ICsdata[index_base_0] > 0., "Densities below 0");
 
             u(IDN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_0] * d_cgs_factor;
