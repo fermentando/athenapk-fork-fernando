@@ -570,7 +570,7 @@ void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::Si
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
 // we'll use this enum to identify the various vars.
-enum class HstQuan {mc, Mcx1, Mcx2, Mcx3, vboost, mcout, mwout};
+enum class HstQuan {mc, mbw, Mcx1, Mcx2, Mcx3, vboost, mcout, mwout};
 
 // Compute the local sum of cloud mass
 template <HstQuan hst_quan>
@@ -652,6 +652,11 @@ Real WindTunnelHst(MeshData<Real> *md) {
           }
           
         }
+        if (temp <= 10 * T_cloud){
+          if (hst_quan == HstQuan::mbw){
+            lsum += prims(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+        }
       },
       sum);
   }
@@ -667,6 +672,8 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
 
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     WindTunnelHst<HstQuan::mc>, "mc"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    WindTunnelHst<HstQuan::mc>, "mbw"));
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     WindTunnelHst<HstQuan::Mcx1>, "Mcx1"));
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
