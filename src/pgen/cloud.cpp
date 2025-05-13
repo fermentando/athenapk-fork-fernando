@@ -29,8 +29,7 @@
 namespace cloud {
 using namespace parthenon::driver::prelude;
 
-
-Real rho_wind, mom_wind, rhoe_wind, r_cloud, rho_cloud, gm1, Mach_wind;
+Real rho_wind, mom_wind, rhoe_wind, r_cloud, rho_cloud, rho_amb, rhoe_amb;
 Real Bx = 0.0;
 Real By = 0.0;
 Real Bz = 0.0;
@@ -47,18 +46,20 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   Units units(pin);
 
   auto gamma = pin->GetReal("hydro", "gamma");
-  gm1 = (gamma - 1.0);
+  auto gm1 = (gamma - 1.0);
   const auto &pkg = mesh->packages.Get("Hydro");
   const auto mbar_over_kb = pkg->Param<Real>("mbar_over_kb");
-  auto bool_boost = pin->GetOrAddBoolean("parthenon/mesh", "tracking", false);
 
   r_cloud = pin->GetReal("problem/cloud", "r0_cgs") / units.code_length_cgs();
   rho_cloud = pin->GetReal("problem/cloud", "rho_cloud_cgs") / units.code_density_cgs();
   rho_amb = pin->GetReal("problem/cloud", "rho_wind_cgs") / units.code_density_cgs();
   auto T_amb = pin->GetReal("problem/cloud", "T_wind_cgs");
+  auto bool_boost = pin->GetOrAddBoolean("parthenon/mesh", "tracking", false);
 
   // mu_mh_gm1_by_k_B is already in code units
-  pressure = T_wind * rho_wind / mbar_over_kb / gm1;
+  rhoe_amb = T_amb * rho_amb / mbar_over_kb / gm1;
+  const auto pressure =
+      gm1 * rhoe_amb; // one value for entire domain given initial pressure equil.
 
   auto mach = pin->GetReal("problem/cloud", "mach_shock");
 
@@ -73,16 +74,11 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   const auto T_wind = pressure_wind / rho_wind * mbar_over_kb;
 
   const auto v_wind = jump3 * mach * std::sqrt(gamma * pressure / rho_amb);
-
-
-
+  mom_wind = rho_wind * v_wind;
 
   const auto c_s_wind = std::sqrt(gamma * gm1 * rhoe_wind / rho_wind);
   const auto chi_0 = rho_cloud / rho_wind;               // cloud to wind density ratio
-  Mach_wind =  v_wind / c_s_wind;
   const auto t_cc = r_cloud * std::sqrt(chi_0) / v_wind; // cloud crushting time (code)
-  const auto pressure =
-      gm1 * rhoe_wind; // one value for entire domain given initial pressure equil.
 
   const auto T_cloud = pressure / rho_cloud * mbar_over_kb;
 
@@ -106,12 +102,6 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
                      "'aligned', 'transverse', or 'oblique'.");
     }
   }
-
-  const parthenon::Real He_mass_fraction = pin->GetReal("hydro", "He_mass_fraction");
-  const parthenon::Real H_mass_fraction = 1.0 - He_mass_fraction;
-  const parthenon::Real mu =
-      1 / (He_mass_fraction * 3. / 4. + (1 - He_mass_fraction) * 2);
-
   //Set frame speed as mutable
   pkg->AddParam<Real>("dv_v", 0., true);
   pkg->AddParam<Real>("v_boost", 0., true);
@@ -119,8 +109,6 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   pkg->AddParam<bool>("tracking", bool_boost);
 
   mom_wind = rho_wind * v_wind;
-  printf("Initial momentum of the wind: %.3g", mom_wind);
-  printf("initia velocity of the wind: %.3g", v_wind);
 
   std::stringstream msg;
   msg << std::setprecision(2);
@@ -139,6 +127,10 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   msg << "## Uniform pressure (code units): " << pressure << std::endl;
   msg << "## Wind sonic Mach: " << v_wind / c_s_wind << std::endl;
   msg << "## Cloud crushing time: " << t_cc / units.myr() << " Myr" << std::endl;
+  // msg << "shock mach in abmient meidum: " << S_3 / sqrt(gamma * pressure / rho_amb)
+  // << std::endl;
+  msg << "wind mach in abmient meidum: " << v_wind / sqrt(gamma * pressure / rho_amb)
+      << std::endl;
 
   // (potentially) rescale global times only at the beginning of a simulation
   auto rescale_code_time_to_tcc =
@@ -194,7 +186,11 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
                    "but `hydro/fluid` is not supporting MHD.");
   }
 
+  Units units(pin);
   auto steepness = pin->GetOrAddReal("problem/cloud", "cloud_steepness", 10);
+  const auto r_cloud_cgs = pin->GetReal("problem/cloud", "r0_cgs");
+  auto xshock = pin->GetOrAddReal("problem/cloud", "xshock_cgs", -3 * r_cloud_cgs) /
+                units.code_length_cgs();
 
   // initialize conserved variables
   auto &mbd = pmb->meshblock_data.Get();
@@ -203,23 +199,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   // initializing on host
   auto u = u_dev.GetHostMirrorAndCopy();
 
-
-  // Pre-shock (ambient/wind) values
-  Real dr = rho_wind;
-  Real pr = rhoe_wind * gm1;
-  Real ur = 0.0;  // assuming static wind initially
-
-  // Jump conditions (using gm1 = γ - 1)
-  Real jump1 = (gm1 + 2.0)/(gm1 + 2.0/(Mach_wind*Mach_wind));  // density ratio
-  Real jump2 = (2.0 * (gm1 + 1.0) * Mach_wind*Mach_wind - gm1)/(gm1 + 2.0);  // pressure ratio
-  Real jump3 = 2.0*(1.0 - 1.0/(Mach_wind*Mach_wind))/(gm1 + 2.0);  // velocity increase
-
-  // Post-shock (cloud) values using jump conditions
-  Real dl = dr * jump1;
-  Real pl = pr * jump2;
-  Real ul = ur + jump3 * Mach_wind * std::sqrt((gm1 + 1) * pr / dr);
-
-  // Loop over grid
+  // Read problem parameters
   for (int k = kb.s; k <= kb.e; k++) {
     for (int j = jb.s; j <= jb.e; j++) {
       for (int i = ib.s; i <= ib.e; i++) {
@@ -228,24 +208,19 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         const Real z = coords.Xc<3>(k);
         const Real rad = std::sqrt(SQR(x) + SQR(y) + SQR(z));
 
-        // Use post-shock values inside r_cloud
-        if (y < - 1.5*r_cloud) {
-          u(IDN, k, j, i) = dl;
-          u(IM2, k, j, i) = ul * dl;
-          u(IEN, k, j, i) = pl/gm1 + 0.5 * dl * ul * ul;
+        Real rho;
+        // Set background
+        if (y < xshock) {
+          rho = rho_wind;
+          u(IM2, k, j, i) = mom_wind;
+          u(IEN, k, j, i) = rhoe_wind + 0.5 * mom_wind * mom_wind / rho_wind;
         } else {
-          u(IDN, k, j, i) = dr;
-          u(IM2, k, j, i) = ul * dr;
-          u(IEN, k, j, i) = pr/gm1 + 0.5 * dr * ur * ur;
+          rho = rho_amb + 0.5 * (rho_cloud - rho_amb) *
+                              (1.0 - std::tanh(steepness * (rad / r_cloud - 1.0)));
+          u(IEN, k, j, i) = rhoe_amb;
         }
-        // Pre or post-shock region
-        if (rad < r_cloud){
-          u(IDN, k, j, i) = dr * 100;
-          u(IM2, k, j, i) = ur * dr * 100;
-          u(IEN, k, j, i) = pr/gm1 + 0.5 * dr * 100 * ur * ur;
-        }
-        
-        //TODO Fernando: adjust B values for pre-shock conditions
+        u(IDN, k, j, i) = rho;
+
         if (mhd_enabled) {
           u(IB1, k, j, i) = Bx;
           u(IB2, k, j, i) = By;
@@ -256,7 +231,7 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         // Init passive scalars
         for (auto n = nhydro; n < nhydro + nscalars; n++) {
           if (rad <= r_cloud) {
-            u(n, k, j, i) = 1.0 * dr * 100;
+            u(n, k, j, i) = 1.0 * rho;
           }
         }
       }
@@ -267,12 +242,12 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
   u_dev.DeepCopy(u);
 }
 
+
+
 void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
   auto cons = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
-  const auto mbar_over_kb = hydro_pkg->Param<Real>("mbar_over_kb");
-  // TODO(pgrete) Add par_for_bndry to Parthenon without requiring nb
   const auto nb = IndexRange{0, 0};
   const auto rho_wind_ = rho_wind;
   const auto mom_wind_init = mom_wind;
@@ -281,39 +256,16 @@ void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   const auto By_ = By;
   const auto Bz_ = Bz;
   const bool fine = false;
-  const auto gm1_ = gm1;
-
   auto v_boost = hydro_pkg->Param<Real>("v_boost");
-  const auto units = hydro_pkg->Param<Units>("units");
 
-  // Pre-shock (ambient/wind) values
-  Real dr = rho_wind;
-  Real pr = rhoe_wind_ * gm1;
-  Real ur = 0.0;  // assuming static wind initially
-
-  const auto c_s = std::sqrt((gm1_ + 1) * pr / dr);
-  auto Mach_wind_ = Mach_wind;//(mom_wind_init / rho_wind_  - v_boost) / c_s;
-
-  // Jump conditions (using gm1 = γ - 1)
-  Real jump1 = (gm1_ + 2.0)/(gm1_ + 2.0/(Mach_wind_ * Mach_wind_));  // density ratio
-  Real jump2 = (2.0 * (gm1_ + 1.0) * Mach_wind_*Mach_wind_ - gm1_)/(gm1_ + 2.0);  // pressure ratio
-  Real jump3 = 2.0*(1.0 - 1.0/(Mach_wind_*Mach_wind_))/(gm1_ + 2.0);  // velocity increase
-
-  // Post-shock (cloud) values using jump conditions
-  Real dl = dr * jump1;
-  Real pl = pr * jump2;
-  Real ul = ur + jump3 * Mach_wind_ * c_s;
-
+  auto mom_wind_ = mom_wind_init - rho_wind_ * v_boost;
 
   pmb->par_for_bndry(
       "InflowWindX2", nb, IndexDomain::inner_x2, parthenon::TopologicalElement::CC,
       coarse, fine, KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
-      
-        //if (j <= 3){
-        cons(IDN, k, j, i) = dl;
-        cons(IM2, k, j, i) = ul * dl;
-        cons(IEN, k, j, i) = pl/gm1_ + 0.5 * dl * ul * ul;
-        //TODO Fernando: adjust B values for pre-shock conditions
+        cons(IDN, k, j, i) = rho_wind_;
+        cons(IM2, k, j, i) = mom_wind_;
+        cons(IEN, k, j, i) = rhoe_wind_ + 0.5 * mom_wind_ * mom_wind_ / rho_wind_;
         if (Bx_ != 0.0) {
           cons(IB1, k, j, i) = Bx_;
           cons(IEN, k, j, i) += 0.5 * Bx_ * Bx_;
@@ -326,9 +278,9 @@ void InflowWindX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
           cons(IB3, k, j, i) = Bz_;
           cons(IEN, k, j, i) += 0.5 * Bz_ * Bz_;
         }
-        //}
-    });
+      });
 }
+
 
 parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
   auto pmb = mbd->GetBlockPointer();
