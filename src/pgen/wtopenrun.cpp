@@ -291,14 +291,12 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     const int ny = pmb->block_size.nx(X2DIR);
     const int nx = pmb->block_size.nx(X1DIR);
 
+
     if (( loc.lx1() < 0) || ( loc.lx2() < 0) || ( loc.lx3() < 0)) {
       printf("Value of loc1 is not valid... \n");
       continue;
     }
-    if (( loc.lx1() >= nx) || ( loc.lx2() >= ny) || ( loc.lx3() >= nz)) {
-      printf("Value of loc1 is not valid... \n");
-      continue;
-    }
+
     
     adios2::fstream iStream(ics_filename, adios2::fstream::in, MPI_COMM_WORLD);
     adios2::fstep iStep;
