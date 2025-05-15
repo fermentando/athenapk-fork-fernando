@@ -364,7 +364,6 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
           int index_base_0 = ((0 * nz + k) * ny + j) * nx + i;
           int index_base_1 = ((1 * nz + k) * ny + j) * nx + i;
           int index_base_2 = ((2 * nz + k) * ny + j) * nx + i;
-          int index_base_3 = ((3 * nz + k) * ny + j) * nx + i;
 
           PARTHENON_REQUIRE_THROWS(ICsdata[index_base_0] > 0., "Densities below 0");
 
