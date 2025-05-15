@@ -75,24 +75,37 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
   r_cloud = pin->GetReal("problem/wtopenrun", "r0_cgs") / units.code_length_cgs();
   rho_cloud = pin->GetReal("problem/wtopenrun", "rho_cloud_cgs") / units.code_density_cgs();
-  rho_wind = pin->GetReal("problem/wtopenrun", "rho_wind_cgs") / units.code_density_cgs();
-  auto T_wind = pin->GetReal("problem/wtopenrun", "T_wind_cgs");
-  auto Mach_wind = pin->GetReal("problem/wtopenrun", "Mach_wind");
+  auto rho_amb = pin->GetReal("problem/wtopenrun", "rho_wind_cgs") / units.code_density_cgs();
+  auto T_amb = pin->GetReal("problem/wtopenrun", "T_wind_cgs");
   auto bool_boost = pin->GetOrAddBoolean("parthenon/mesh", "tracking", false);
-  auto wfrac = pin->GetOrAddReal("parthenon/mesh", "wfrac", 1.);
-  auto depth = pin->GetOrAddReal("parthenon/wtopenrun", "depth", 1.);
-
 
   // mu_mh_gm1_by_k_B is already in code units
-  rhoe_wind = T_wind * rho_wind / mbar_over_kb / gm1;
+  auto rhoe_amb = T_amb * rho_amb / mbar_over_kb / gm1;
+  const auto pressure =
+      gm1 * rhoe_amb; // one value for entire domain given initial pressure equil.
+
+  auto mach = pin->GetReal("problem/wtopenrun", "mach_shock");
+
+  // Uses Rankine Hugoniot relations for adiabatic gas to initialize problem
+  Real jump1 = (gamma + 1.0) / (gm1 + 2.0 / (mach * mach));
+  Real jump2 = (2.0 * gamma * mach * mach - gm1) / (gamma + 1.0);
+  Real jump3 = 2.0 * (1.0 - 1.0 / (mach * mach)) / (gamma + 1.0);
+
+  rho_wind = rho_amb * jump1;
+  const auto pressure_wind = pressure * jump2;
+  rhoe_wind = pressure_wind / gm1;
+  const auto T_wind = pressure_wind / rho_wind * mbar_over_kb;
+
+  const auto v_wind = jump3 * mach * std::sqrt(gamma * pressure / rho_amb);
+  mom_wind = rho_wind * v_wind;
+
   const auto c_s_wind = std::sqrt(gamma * gm1 * rhoe_wind / rho_wind);
   const auto chi_0 = rho_cloud / rho_wind;               // cloud to wind density ratio
-  const auto v_wind = c_s_wind * Mach_wind;
-  const auto t_cc = r_cloud * std::sqrt(chi_0) / v_wind * depth; // cloud crushting time (code)
-  const auto pressure =
-      gm1 * rhoe_wind; // one value for entire domain given initial pressure equil.
+  const auto t_cc = r_cloud * std::sqrt(chi_0) / v_wind; // cloud crushting time (code)
 
   const auto T_cloud = pressure / rho_cloud * mbar_over_kb;
+  auto wfrac = pin->GetOrAddReal("parthenon/mesh", "wfrac", 1.);
+  auto depth = pin->GetOrAddReal("parthenon/wtopenrun", "depth", 1.);
 
   auto plasma_beta = pin->GetOrAddReal("problem/wtopenrun", "plasma_beta", -1.0);
 
@@ -249,14 +262,31 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   Units units(pin);
 
   const std::string ics_filename = pin->GetString("job", "bin_input_file");
+  std::string varname = ics_filename;
+  size_t pos = varname.find(".bp");
+
+  adios2::ADIOS adios(MPI_COMM_WORLD);
+
+  adios2::IO get_var = adios.DeclareIO("GetVar");
+  adios2::Engine bpReader = get_var.Open(ics_filename, adios2::Mode::Read);
+  bpReader.BeginStep();
+  adios2::Variable<double> myvar_in = get_var.InquireVariable<double>(varname.erase(pos));
+  PARTHENON_REQUIRE_THROWS(myvar_in, "Could not find variable name in file.");
 
   auto d_cgs_factor = 1. / units.code_density_cgs();
   auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
   auto e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
 
-  const auto gnx = pin->GetInteger("parthenon/mesh", "nx1");
-  const auto gny = pin->GetInteger("parthenon/mesh", "nx2");
-  const auto gnz = pin->GetInteger("parthenon/mesh", "nx3");
+
+  const auto nx = pmesh->GetDefaultBlockSize().nx(parthenon::X1DIR);
+  const auto ny = pmesh->GetDefaultBlockSize().nx(parthenon::X2DIR);
+  const auto nz = pmesh->GetDefaultBlockSize().nx(parthenon::X3DIR);
+
+  
+  const int fields = 4;
+
+
+  std::vector<double> ICsdata(fields * nx * ny * nz);
 
 
   //Get meshblock for GPU
@@ -284,85 +314,81 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     const int loc2 = loc.lx2();
     const int loc3 = loc.lx3();
 
-    //Assign meshblock values to execution space
-    const int fields = 4;
-
-    const int nz = pmb->block_size.nx(X3DIR);
-    const int ny = pmb->block_size.nx(X2DIR);
-    const int nx = pmb->block_size.nx(X1DIR);
-
 
     if (( loc.lx1() < 0) || ( loc.lx2() < 0) || ( loc.lx3() < 0)) {
       printf("Value of loc1 is not valid... \n");
       continue;
     }
 
-    
-    adios2::fstream iStream(ics_filename, adios2::fstream::in, MPI_COMM_WORLD);
-    adios2::fstep iStep;
-    while (adios2::getstep(iStream, iStep)) {
+
+    const adios2::Dims start{static_cast<unsigned long>(loc3), 
+                              static_cast<unsigned long>(loc2),
+                              static_cast<unsigned long>(loc1), 
+                              0,
+                              0,
+                              0,
+                              0};
+    const adios2::Dims counts{1,
+                              1,
+                              1, 
+                              static_cast<unsigned long>(fields),
+                              static_cast<unsigned long>(nz),
+                              static_cast<unsigned long>(ny),
+                              static_cast<unsigned long>(nx)};
 
 
-      const adios2::Dims start{static_cast<unsigned long>(loc3), static_cast<unsigned long>(loc2), static_cast<unsigned long>(loc1), 
-                                0, 0, 0, 0};
-      const adios2::Dims counts{1,1,1, 
-                                  static_cast<unsigned long>(fields), static_cast<unsigned long>(nz),
-                                   static_cast<unsigned long>(ny), static_cast<unsigned long>(nx)};
-      std::string varname = ics_filename;
-      size_t pos = varname.find(".bp");
-      auto ICsdata = iStream.read<double>(varname.erase(pos), start, counts);
+    myvar_in.SetSelection({start, counts});
+    bpReader.Get(myvar_in, ICsdata.data(), adios2::Mode::Sync);
 
 
+    // Create initial conditions for meshblock from these values:
+    // initialize conserved variables
+    auto &mbd = pmb->meshblock_data.Get();
+    auto &u_dev = mbd->Get("cons").data;
+    auto &coords = pmb->coords;
+    // initializing on host
+    auto u = u_dev.GetHostMirrorAndCopy();
 
 
-      // Create initial conditions for meshblock from these values:
-      // initialize conserved variables
-      auto &mbd = pmb->meshblock_data.Get();
-      auto &u_dev = mbd->Get("cons").data;
-      auto &coords = pmb->coords;
-      // initializing on host
-      auto u = u_dev.GetHostMirrorAndCopy();
+    IndexRange ib = mbd->GetBoundsI(IndexDomain::interior);
+    IndexRange jb = mbd->GetBoundsJ(IndexDomain::interior);
+    IndexRange kb = mbd->GetBoundsK(IndexDomain::interior);
 
 
-      IndexRange ib = mbd->GetBoundsI(IndexDomain::interior);
-      IndexRange jb = mbd->GetBoundsJ(IndexDomain::interior);
-      IndexRange kb = mbd->GetBoundsK(IndexDomain::interior);
+    // Read problem parameters
+    for (int k = 0; k < nz; k++) {
+      for (int j = 0; j < ny; j++) {
+        for (int i = 0; i < nx; i++) {
 
 
-      // Read problem parameters
-      for (int k = 0; k < nz; k++) {
-        for (int j = 0; j < ny; j++) {
-          for (int i = 0; i < nx; i++) {
+          int index_base_0 = ((0 * nz + k) * ny + j) * nx + i;
+          int index_base_1 = ((1 * nz + k) * ny + j) * nx + i;
+          int index_base_2 = ((2 * nz + k) * ny + j) * nx + i;
+          int index_base_3 = ((3 * nz + k) * ny + j) * nx + i;
 
+          PARTHENON_REQUIRE_THROWS(ICsdata[index_base_0] > 0., "Densities below 0");
 
-            int index_base_0 = ((0 * nz + k) * ny + j) * nx + i;
-            int index_base_1 = ((1 * nz + k) * ny + j) * nx + i;
-            int index_base_2 = ((2 * nz + k) * ny + j) * nx + i;
-            int index_base_3 = ((3 * nz + k) * ny + j) * nx + i;
+          u(IDN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_0] * d_cgs_factor;
+          u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
+          u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * e_cgs_factor;
 
-            PARTHENON_REQUIRE_THROWS(ICsdata[index_base_0] > 0., "Densities below 0");
-
-            u(IDN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_0] * d_cgs_factor;
-            u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
-            u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * e_cgs_factor+ ICsdata[index_base_3] / mbar_over_kb * d_cgs_factor;
-
-            if (mhd_enabled) {
-              u(IB1, k, j, i) = Bx;
-              u(IB2, k, j, i) = By;
-              u(IB3, k, j, i) = Bz;
-              u(IEN, k, j, i) += 0.5 * (Bx * Bx + By * By + Bz * Bz);
-            }
-
+          if (mhd_enabled) {
+            u(IB1, k, j, i) = Bx;
+            u(IB2, k, j, i) = By;
+            u(IB3, k, j, i) = Bz;
+            u(IEN, k, j, i) += 0.5 * (Bx * Bx + By * By + Bz * Bz);
           }
+
         }
       }
+    }
 
     // copy initialized vars to device
     u_dev.DeepCopy(u);
-    break;
     }
-    iStream.close();
-  }
+  bpReader.EndStep();
+  bpReader.Close();
+
 
 }
 
