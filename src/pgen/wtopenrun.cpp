@@ -78,6 +78,8 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   auto rho_amb = pin->GetReal("problem/wtopenrun", "rho_wind_cgs") / units.code_density_cgs();
   auto T_amb = pin->GetReal("problem/wtopenrun", "T_wind_cgs");
   auto bool_boost = pin->GetOrAddBoolean("parthenon/mesh", "tracking", false);
+  auto wfrac = pin->GetOrAddReal("parthenon/mesh", "wfrac", 1.);
+  auto depth = pin->GetOrAddReal("parthenon/wtopenrun", "depth", 1.);
 
   // mu_mh_gm1_by_k_B is already in code units
   auto rhoe_amb = T_amb * rho_amb / mbar_over_kb / gm1;
@@ -101,11 +103,10 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
   const auto c_s_wind = std::sqrt(gamma * gm1 * rhoe_wind / rho_wind);
   const auto chi_0 = rho_cloud / rho_wind;               // cloud to wind density ratio
-  const auto t_cc = r_cloud * std::sqrt(chi_0) / v_wind; // cloud crushting time (code)
+  const auto t_cc = r_cloud * std::sqrt(chi_0) * depth / v_wind; // cloud crushting time (code)
 
   const auto T_cloud = pressure / rho_cloud * mbar_over_kb;
-  auto wfrac = pin->GetOrAddReal("parthenon/mesh", "wfrac", 1.);
-  auto depth = pin->GetOrAddReal("parthenon/wtopenrun", "depth", 1.);
+
 
   auto plasma_beta = pin->GetOrAddReal("problem/wtopenrun", "plasma_beta", -1.0);
 
@@ -283,7 +284,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   const auto nz = pmesh->GetDefaultBlockSize().nx(parthenon::X3DIR);
 
   
-  const int fields = 4;
+  const int fields = 3;
 
 
   std::vector<double> ICsdata(fields * nx * ny * nz);
@@ -339,6 +340,8 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
     myvar_in.SetSelection({start, counts});
     bpReader.Get(myvar_in, ICsdata.data(), adios2::Mode::Sync);
+    std::cerr << "Reading first item of meshblock data: " << ICsdata[0] << " from rank" << Globals::my_rank << std::endl;
+    
 
 
     // Create initial conditions for meshblock from these values:
@@ -387,6 +390,17 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     }
   bpReader.EndStep();
   bpReader.Close();
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto &mbd = pmb->meshblock_data.Get();
+  auto &u_dev = mbd->Get("cons").data;
+  //for (int i = 0; i < nx; i++){
+  //  for (int j = 0; j < ny; j++){
+  //    for (int k = 0; k < nz; k++){
+  //      printf("Density values in ICs file is %.3g:\n", u_dev(IDN, i, j, k));
+
+  //    }
+  //  }
+  //}
 
 
 }
