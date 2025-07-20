@@ -15,6 +15,7 @@
 #include "hydro/hydro.hpp"
 #include "hydro/hydro_driver.hpp"
 #include "main.hpp"
+#include "poisson/poisson_driver.hpp"
 
 #include "pgen/pgen.hpp"
 #include "tracers/tracers.hpp"
@@ -55,6 +56,7 @@ int main(int argc, char *argv[]) {
 
   // Redefine defaults
   pman.app_input->ProcessPackages = Hydro::ProcessPackages;
+  pman.app_input->ProcessPackages = poisson::ProcessPackages;
   pman.app_input->PreStepMeshUserWorkInLoop = Hydro::PreStepMeshUserWorkInLoop;
   const auto problem = pman.pinput->GetOrAddString("job", "problem_id", "unset");
 
@@ -156,10 +158,13 @@ int main(int argc, char *argv[]) {
 
   // This needs to be scoped so that the driver object is destructed before Finalize
   {
-    Hydro::HydroDriver driver(pman.pinput.get(), pman.app_input.get(), pman.pmesh.get());
+    Hydro::HydroDriver hydro_driver(pman.pinput.get(), pman.app_input.get(), pman.pmesh.get());
+    poisson::PoissonDriver poisson_driver(pman.pinput.get(), pman.app_input.get(),
+                                      pman.pmesh.get());
 
     // This line actually runs the simulation
-    driver.Execute();
+    hydro_driver.Execute();
+    poisson_driver.Execute();
   }
 
   // call MPI_Finalize and Kokkos::finalize if necessary

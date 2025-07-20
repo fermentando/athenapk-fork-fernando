@@ -20,6 +20,8 @@ add_executable(
         hydro/srcterms/gravitational_field.hpp
         hydro/srcterms/tabular_cooling.hpp
         hydro/srcterms/tabular_cooling.cpp
+        poisson/poisson_driver.cpp
+        poisson/poisson_package.cpp
         refinement/gradient.cpp
         refinement/other.cpp
         tracers/tracers.cpp

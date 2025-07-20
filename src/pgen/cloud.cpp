@@ -25,11 +25,13 @@
 // AthenaPK headers
 #include "../main.hpp"
 #include "../units.hpp"
+#include "../poisson/poisson_package.hpp"
 
 namespace cloud {
 using namespace parthenon::driver::prelude;
 
 Real rho_wind, mom_wind, rhoe_wind, r_cloud, rho_cloud;
+Real G_const;
 Real Bx = 0.0;
 Real By = 0.0;
 Real Bz = 0.0;
@@ -44,29 +46,14 @@ Real Bz = 0.0;
 void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   // no access to package in this function so we use a local units object
 
-        // Get the number of processes
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-
-    // Get the rank of the process
-    int world_rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-
-    // Get the name of the processor
-    char processor_name[MPI_MAX_PROCESSOR_NAME];
-    int name_len;
-    MPI_Get_processor_name(processor_name, &name_len);
-
-    // Print off a hello world message
-    printf("Hello world from processor %s, rank %d out of %d processors\n",
-        processor_name, world_rank, world_size);
-        
   Units units(pin);
 
   auto gamma = pin->GetReal("hydro", "gamma");
   auto gm1 = (gamma - 1.0);
   const auto &pkg = mesh->packages.Get("Hydro");
   const auto mbar_over_kb = pkg->Param<Real>("mbar_over_kb");
+  G_const = units.gravitational_constant() / pow(units.code_length_cgs(), 3) *
+            pow(units.code_time_cgs(), 2) * units.code_mass_cgs();
 
   r_cloud = pin->GetReal("problem/cloud", "r0_cgs") / units.code_length_cgs();
   rho_cloud = pin->GetReal("problem/cloud", "rho_cloud_cgs") / units.code_density_cgs();
@@ -169,6 +156,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 //  \brief Problem Generator for the cloud in wind setup
 
 void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
+
+  fprintf(stderr, "ProblemGenerator for cloud in wind problem\n");
+  fflush(stderr);
   auto hydro_pkg = pmb->packages.Get("Hydro");
   auto ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
   auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
@@ -187,27 +177,53 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
 
   // initialize conserved variables
   auto &mbd = pmb->meshblock_data.Get();
+  auto md = pmb->meshblock_data.Get(); 
   auto &u_dev = mbd->Get("cons").data;
-  auto &coords = pmb->coords;
+  auto &cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
+
   // initializing on host
   auto u = u_dev.GetHostMirrorAndCopy();
 
+  // Pack descriptor for poisson eq
+  auto desc =
+    parthenon::MakePackDescriptor<poisson_package::rhs, poisson_package::u,
+                                  poisson_package::D, poisson_package::exact>(md.get());
+  auto pack = desc.GetPack(md.get());
+
   // Read problem parameters
-  for (int k = kb.s; k <= kb.e; k++) {
-    for (int j = jb.s; j <= jb.e; j++) {
-      for (int i = ib.s; i <= ib.e; i++) {
+  constexpr auto te = poisson_package::te;
+  const auto G_const_ = G_const;
+  using TE = parthenon::TopologicalElement;
+  const auto rho_cloud_ = rho_cloud;
+  const auto rho_wind_ = rho_wind;
+  const auto rhoe_wind_ = rhoe_wind;
+  const auto r_cloud_ = r_cloud;
+  const auto Bx_ = Bx;
+  const auto By_ = By;
+  const auto Bz_ = Bz;
+  pmb->par_for(
+      "Poisson::ProblemGenerator", 0, pack.GetNBlocks() - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
+      ib.e, KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
+        const auto &coords = cons_pack.GetCoords(b);
         const Real x = coords.Xc<1>(i);
         const Real y = coords.Xc<2>(j);
         const Real z = coords.Xc<3>(k);
         const Real rad = std::sqrt(SQR(x) + SQR(y) + SQR(z));
 
-        Real rho = rho_wind + 0.5 * (rho_cloud - rho_wind) *
-                                  (1.0 - std::tanh(steepness * (rad / r_cloud - 1.0)));
+        Real rho = rho_wind_ + 0.5 * (rho_cloud_ - rho_wind_) *
+                                  (1.0 - std::tanh(steepness * (rad / r_cloud_ - 1.0)));
 
         Real mom;
+
+        pack(b, te, poisson_package::rhs(), k, j, i) = 4 * M_PI * G_const_ * rho;
+        pack(b, te, poisson_package::u(), k, j, i) = 0.0;
+        using TE = parthenon::TopologicalElement;
+        pack(b, TE::F1, poisson_package::D(), k, j, i) = 1.0;
+        pack(b, TE::F2, poisson_package::D(), k, j, i) = 1.0;
+        pack(b, TE::F3, poisson_package::D(), k, j, i) = 1.0;
         // Factor 1.3 as used in Grønnow, Tepper-García, & Bland-Hawthorn 2018,
         // i.e., outside the cloud boundary region (for steepness 10)
-        if (rad < r_cloud) {
+        if (rad < r_cloud_) {
           mom = 0.0;
         } else {
           mom = 0.0;
@@ -216,25 +232,24 @@ void ProblemGenerator(MeshBlock *pmb, ParameterInput *pin) {
         u(IDN, k, j, i) = rho;
         u(IM2, k, j, i) = mom;
         // Can use rhoe_wind here as simulation is setup in pressure equil.
-        u(IEN, k, j, i) = rhoe_wind + 0.5 * mom * mom / rho;
+        u(IEN, k, j, i) = rhoe_wind_ + 0.5 * mom * mom / rho;
         //if (j == kb.s) printf("Initial density, momm and energy of cells: %e, %e, %e \n", rho, mom, rhoe_wind + 0.5 * mom * mom / rho);
 
         if (mhd_enabled) {
-          u(IB1, k, j, i) = Bx;
-          u(IB2, k, j, i) = By;
-          u(IB3, k, j, i) = Bz;
-          u(IEN, k, j, i) += 0.5 * (Bx * Bx + By * By + Bz * Bz);
+          u(IB1, k, j, i) = Bx_;
+          u(IB2, k, j, i) = By_;
+          u(IB3, k, j, i) = Bz_;
+          u(IEN, k, j, i) += 0.5 * (Bx_ * Bx_ + By_ * By_ + Bz_ * Bz_);
         }
 
         // Init passive scalars
         for (auto n = nhydro; n < nhydro + nscalars; n++) {
-          if (rad <= r_cloud) {
+          if (rad <= r_cloud_) {
             u(n, k, j, i) = 1.0 * rho;
           }
         }
-      }
-    }
-  }
+      });
+
 
   // copy initialized vars to device
   u_dev.DeepCopy(u);
@@ -297,5 +312,14 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd) {
   if (maxscalar < 0.001) return parthenon::AmrTag::derefine;
   return parthenon::AmrTag::same;
 };
+
+
+Packages_t ProcessPackages(std::unique_ptr<ParameterInput> &pin) {
+  Packages_t packages;
+  auto pkg = poisson_package::Initialize(pin.get());
+  packages.Add(pkg);
+
+  return packages;
+}
 
 } // namespace cloud
