@@ -6,6 +6,8 @@ if [ "$current_branch" = "main" ]; then
     build_dir='build-gpu'
 elif [ "$current_branch" = "single-cloud-tracking" ]; then
     build_dir='build-gpu-dev'
+elif [ "$current_branch" = "development" ]; then
+    build_dir='build-stratified'
 else
     build_dir="build-$current_branch"
 fi

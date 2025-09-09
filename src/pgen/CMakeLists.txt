@@ -26,4 +26,5 @@ target_sources(athenaPK PRIVATE
     sod.cpp
     turbulence.cpp
     wtopenrun.cpp
+    stratified.cpp
     )

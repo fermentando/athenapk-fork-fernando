@@ -84,7 +84,11 @@ int main(int argc, char *argv[]) {
                                               "wtopenrun_inflow_x2", wtopenrun::InflowWindX2);
     Hydro::ProblemInitPackageData = wtopenrun::ProblemInitPackageData;
     Hydro::ProblemSourceFirstOrder = wtopenrun::FrameBoosting;
-  } else if (problem == "blast") {
+  } else if (problem == "stratified_box") {
+    pman.app_input->InitUserMeshData = stratified_box::InitUserMeshData;
+    pman.app_input->MeshProblemGenerator = stratified_box::ProblemGenerator;
+    Hydro::ProblemSourceUnsplit = stratified_box::StratUnsplitSrcTerm;
+  }else if (problem == "blast") {
     pman.app_input->InitUserMeshData = blast::InitUserMeshData;
     pman.app_input->ProblemGenerator = blast::ProblemGenerator;
     pman.app_input->UserWorkAfterLoop = blast::UserWorkAfterLoop;

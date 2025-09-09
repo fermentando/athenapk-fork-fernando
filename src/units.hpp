@@ -95,6 +95,9 @@ class Units {
   }
 
   // Physical Constants in code units
+  parthenon::Real get_gravitational_const_cgs() const{
+        return gravitational_constant_cgs;
+    }
   parthenon::Real k_boltzmann() const { return k_boltzmann_cgs / code_energy_cgs(); }
   parthenon::Real gravitational_constant() const {
     return gravitational_constant_cgs /

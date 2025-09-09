@@ -57,6 +57,17 @@ parthenon::AmrTag ProblemCheckRefinementBlock(MeshBlockData<Real> *mbd);
 void FrameBoosting(parthenon::MeshData<parthenon::Real> *md, const parthenon::SimTime &tm, const Real dt);
 } // namespace wtopenrun
 
+namespace stratified_box {
+using namespace parthenon;
+
+void InitUserMeshData(Mesh *mesh, ParameterInput *pin);
+void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md);
+void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
+                           const Real beta_dt);
+void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
+                               const parthenon::Real beta_dt);
+} // namespace stratified_box
+
 namespace blast {
 using namespace parthenon::driver::prelude;
 
