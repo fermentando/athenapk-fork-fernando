@@ -26,6 +26,7 @@ using Complex = Kokkos::complex<Real>;
 using parthenon::IndexRange;
 using parthenon::ParArray2D;
 
+
 class FewModesFT {
  private:
   int num_modes_;

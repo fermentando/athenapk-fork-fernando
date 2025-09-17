@@ -24,7 +24,7 @@ id         = restart
 <parthenon/time>
 cfl = 0.3               # The Courant, Friedrichs, & Lewy (CFL) Number
 nlim       = 100000     # cycle limit
-tlim       = 5.0        # time limit
+tlim       = 10.0        # time limit
 integrator  = vl2       # time integration algorithm
 ncycle_out_mesh = -500  # print mesh structure every 500 cyles and on refinement
 

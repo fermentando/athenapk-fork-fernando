@@ -84,9 +84,11 @@ FewModesFT::FewModesFT(parthenon::ParameterInput *pin, parthenon::StateDescripto
   dist_ = std::uniform_real_distribution<>(-1.0, 1.0);
 }
 
+
 void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
   auto pm = pmb->pmy_mesh;
   auto hydro_pkg = pmb->packages.Get("Hydro");
+
 
   // The following restriction could technically be lifted if the turbulence driver is
   // directly embedded in the hydro driver rather than a user defined source as well as
@@ -107,6 +109,17 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
   const auto Lx2 = pm->mesh_size.xmax(X2DIR) - pm->mesh_size.xmin(X2DIR);
   const auto Lx3 = pm->mesh_size.xmax(X3DIR) - pm->mesh_size.xmin(X3DIR);
 
+  
+
+  // Take one dimension as reference
+  if (Lx1 != Lx2 || Lx1 != Lx3) {
+    if (parthenon::Globals::my_rank == 0) {
+      std::cout
+          << "### WARNING: The domain mesh is not cubic. Few modes FT will drive with k_max = 1 / L "
+          << std::endl;
+    }
+  }
+
   // Adjust (logical) grid size at levels other than the root level.
   // This is required for simulation with mesh refinement so that the phases calculated
   // below take the logical grid size into account. For example, the local phases at level
@@ -118,10 +131,10 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
 
   // Restriction should also be easily fixed, just need to double check transforms and
   // volume weighting everywhere
-  PARTHENON_REQUIRE_THROWS(((gnx1 == gnx2) && (gnx2 == gnx3)) &&
-                               ((Lx1 == Lx2) && (Lx2 == Lx3)),
-                           "FMFT has only been tested with cubic meshes and constant "
-                           "dx/dy/dz. Remove this warning at your own risk.")
+  //PARTHENON_REQUIRE_THROWS(((gnx1 == gnx2) && (gnx2 == gnx3)) &&
+  //                             ((Lx1 == Lx2) && (Lx2 == Lx3)),
+  //                         "FMFT has only been tested with cubic meshes and constant "
+  //                         "dx/dy/dz. Remove this warning at your own risk.")
 
   const auto nx1 = pmb->block_size.nx(X1DIR);
   const auto nx2 = pmb->block_size.nx(X2DIR);
@@ -145,6 +158,14 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
   auto &phases_j = base->Get(prefix_ + "_phases_j").data;
   auto &phases_k = base->Get(prefix_ + "_phases_k").data;
 
+
+  Real Lxmin = std::min({Lx1, Lx2, Lx3});
+
+  // Scaling k modes to match that of the smalles dimensions length
+  const auto scale_modes_1 = Lx1 / Lxmin;
+  const auto scale_modes_2 = Lx2 / Lxmin;
+  const auto scale_modes_3 = Lx3 / Lxmin;
+
   const auto ng = fill_ghosts_ ? parthenon::Globals::nghost : 0;
   pmb->par_for(
       "FMFT: calc phases_i", 0, nx1 - 1 + 2 * ng, KOKKOS_LAMBDA(int i) {
@@ -153,7 +174,7 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
         Complex phase;
 
         for (int m = 0; m < num_modes; m++) {
-          w_kx = k_vec(0, m) * 2. * M_PI / static_cast<Real>(gnx1);
+          w_kx = k_vec(0, m) * 2. * M_PI * scale_modes_1 / static_cast<Real>(gnx1);
           // adjust phase factor to Complex->Real IFT: u_hat*(k) = u_hat(-k)
           if (k_vec(0, m) == 0.0) {
             phase = 0.5 * Kokkos::exp(I * w_kx * gi);
@@ -172,7 +193,7 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
         Complex phase;
 
         for (int m = 0; m < num_modes; m++) {
-          w_ky = k_vec(1, m) * 2. * M_PI / static_cast<Real>(gnx2);
+          w_ky = k_vec(1, m) * 2. * M_PI * scale_modes_2 / static_cast<Real>(gnx2);
           phase = Kokkos::exp(I * w_ky * gj);
           phases_j(j, m, 0) = phase.real();
           phases_j(j, m, 1) = phase.imag();
@@ -186,7 +207,7 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
         Complex phase;
 
         for (int m = 0; m < num_modes; m++) {
-          w_kz = k_vec(2, m) * 2. * M_PI / static_cast<Real>(gnx3);
+          w_kz = k_vec(2, m) * 2. * M_PI *  scale_modes_3 / static_cast<Real>(gnx3);
           phase = Kokkos::exp(I * w_kz * gk);
           phases_k(k, m, 0) = phase.real();
           phases_k(k, m, 1) = phase.imag();
@@ -197,6 +218,22 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
 void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
                           const std::string &var_name) {
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto pm = pmb->pmy_mesh;
+  Real z_window_ = 0.419;  //for L = 1,  0.625 for domain L = 1.5;
+  Real denom_window_ = 0.125;
+  
+  const auto Lx1 = pm->mesh_size.xmax(X1DIR) - pm->mesh_size.xmin(X1DIR);
+  const auto Lx2 = pm->mesh_size.xmax(X2DIR) - pm->mesh_size.xmin(X2DIR);
+  const auto Lx3 = pm->mesh_size.xmax(X3DIR) - pm->mesh_size.xmin(X3DIR);
+  const auto x2min = pm->mesh_size.xmin(X2DIR);
+
+  Real Lxmin = std::min({Lx1, Lx2, Lx3});
+
+  // Scaling k modes to match that of the smalles dimensions length
+  const auto scale_modes_1 = Lx1 / Lxmin;
+  const auto scale_modes_2 = Lx2 / Lxmin;
+  const auto scale_modes_3 = Lx3 / Lxmin;
+
 
   const auto num_modes = num_modes_;
 
@@ -224,7 +261,7 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
   auto &var_hat = var_hat_;
   auto &var_hat_new = var_hat_new_;
 
-  const auto kpeak = k_peak_;
+  const auto kpeak = k_peak_ * std::sqrt(scale_modes_1 * scale_modes_1 + scale_modes_2 * scale_modes_2 + scale_modes_3 * scale_modes_3);
 
   // generate new power spectrum (injection)
   pmb->par_for(
@@ -232,9 +269,9 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
       KOKKOS_LAMBDA(const int n, const int m) {
         Real kmag, tmp, norm, v_sqr;
 
-        Real kx = k_vec(0, m);
-        Real ky = k_vec(1, m);
-        Real kz = k_vec(2, m);
+        Real kx = k_vec(0, m) * scale_modes_1;
+        Real ky = k_vec(1, m) * scale_modes_2;
+        Real kz = k_vec(2, m) * scale_modes_3;
 
         kmag = std::sqrt(kx * kx + ky * ky + kz * kz);
 
@@ -269,9 +306,9 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
         "forcing: projection", 0, num_modes - 1, KOKKOS_LAMBDA(const int m) {
           Real kmag;
 
-          Real kx = k_vec(0, m);
-          Real ky = k_vec(1, m);
-          Real kz = k_vec(2, m);
+          Real kx = k_vec(0, m) * scale_modes_1;
+          Real ky = k_vec(1, m) * scale_modes_2;
+          Real kz = k_vec(2, m) * scale_modes_3;
 
           kmag = std::sqrt(kx * kx + ky * ky + kz * kz);
 
@@ -326,12 +363,15 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
   auto phases_j = md->PackVariables(std::vector<std::string>{prefix_ + "_phases_j"});
   auto phases_k = md->PackVariables(std::vector<std::string>{prefix_ + "_phases_k"});
 
+  auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+
   // implictly assuming cubic box of size L=1
   parthenon::par_for(
       DEFAULT_LOOP_PATTERN, "FMFT: Inverse FT", parthenon::DevExecSpace(), 0,
       md->NumBlocks() - 1, 0, 2, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int b, const int n, const int k, const int j, const int i) {
         Complex phase, phase_i, phase_j, phase_k;
+        const auto &coords = cons_pack.GetCoords(b);
         var_pack(b, n, k, j, i) = 0.0;
 
         for (int m = 0; m < num_modes; m++) {
@@ -345,6 +385,23 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
           var_pack(b, n, k, j, i) += 2. * (var_hat(n, m).real() * phase.real() -
                                            var_hat(n, m).imag() * phase.imag());
         }
+
+        //if (z_window_ > 0) {
+        Real y = (coords.Xc<2>(j) - x2min) / Lx2; // [0,1]
+        Real window = 1.0;
+        if (false) {
+          if (y < 0.1) {
+          // taper to zero below 0.1
+            window = exp(-(0.1 - y) / 0.05);  // adjust 0.02 for sharpness
+          } else if (y > 0.8) {
+            // taper to zero above 0.8
+            window = exp(-(y - 0.8) / 0.125);  // adjust 0.02 for sharpness
+          } 
+        } 
+
+
+        var_pack(b, n, k, j, i) *= window;
+
       });
 }
 

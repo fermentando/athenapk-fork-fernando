@@ -88,6 +88,12 @@ int main(int argc, char *argv[]) {
     pman.app_input->InitUserMeshData = stratified_box::InitUserMeshData;
     pman.app_input->MeshProblemGenerator = stratified_box::ProblemGenerator;
     Hydro::ProblemSourceUnsplit = stratified_box::StratUnsplitSrcTerm;
+    Hydro::ProblemInitPackageData = stratified_box::ProblemInitPackageData;
+    Tracers::ProblemInitTracerData = stratified_box::ProblemInitTracerData;
+    Tracers::ProblemFillTracers = stratified_box::ProblemFillTracers;
+    Hydro::ProblemSourceFirstOrder = stratified_box::Driving;
+    pman.app_input->InitMeshBlockUserData = stratified_box::SetPhases;
+    pman.app_input->MeshBlockUserWorkBeforeOutput = stratified_box::UserWorkBeforeOutput;
   }else if (problem == "blast") {
     pman.app_input->InitUserMeshData = blast::InitUserMeshData;
     pman.app_input->ProblemGenerator = blast::ProblemGenerator;

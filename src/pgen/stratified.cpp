@@ -44,9 +44,22 @@
 #include "../units.hpp"
 #include "../eos/adiabatic_glmmhd.hpp"
 #include "../eos/adiabatic_hydro.hpp"
+#include "../tracers/tracers.hpp"
+#include "../utils/few_modes_ft.hpp"
+#include "utils/error_checking.hpp"
+
+
 
 namespace stratified_box {
 using namespace parthenon;
+using namespace parthenon::package::prelude;
+using parthenon::DevMemSpace;
+using parthenon::ParArray2D;
+using utils::few_modes_ft::Complex;
+using utils::few_modes_ft::FewModesFT;
+
+bool drive_turbulence;
+
 
 void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
                                const parthenon::Real beta_dt) {
@@ -107,9 +120,12 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   auto a_over_H= pin->GetReal("problem/stratified_box", "a_over_H");
   auto surface_density = pin->GetReal("problem/stratified_box", "surface_density");
   auto T_base = pin->GetReal("problem/stratified_box", "T_base");
+  auto T_cloud = pin->GetReal("problem/stratified_box", "T_cloud");
+  drive_turbulence = pin->GetOrAddBoolean("problem/turbulence", "drive_turbulence", true);
 
   pkg->AddParam<Real>("a_over_H", a_over_H );
   pkg->AddParam<Real>("surface_density", surface_density);
+  pkg->AddParam<Real>("T_cloud", T_cloud);
 
   const auto g0 = 2 * M_PI * units.gravitational_constant() * surface_density;
   auto c_s = std::sqrt(T_base / mbar_over_kb);
@@ -242,7 +258,6 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     // initialize conserved variables
     auto &mbd = pmb->meshblock_data.Get();
     auto &u_dev = mbd->Get("cons").data;
-    auto &coords = pmb->coords;
     // initializing on host
     auto u = u_dev.GetHostMirrorAndCopy();
 
@@ -283,6 +298,45 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   auto &u_dev = mbd->Get("cons").data;
 
 
+  // For turbulence driving we need to initialize the velocity field
+  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
+  IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
+
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto fluid = hydro_pkg->Param<Fluid>("fluid");
+  const auto gm1 = pin->GetReal("hydro", "gamma") - 1.0;
+  const auto x3min = pmesh->mesh_size.xmin(X3DIR);
+  const auto Lx = pmesh->mesh_size.xmax(X1DIR) - pmesh->mesh_size.xmin(X1DIR);
+  const auto Ly = pmesh->mesh_size.xmax(X2DIR) - pmesh->mesh_size.xmin(X2DIR);
+  const auto Lz = pmesh->mesh_size.xmax(X3DIR) - pmesh->mesh_size.xmin(X3DIR);
+
+  // already pack data here to get easy access to coords in kernels
+  auto const &cons = md->PackVariables(std::vector<std::string>{"cons"});
+  const auto num_blocks = md->NumBlocks();
+
+  const auto init_vel =
+      pin->GetOrAddVector<Real>("problem/turbulence", "v0", {0., 0., 0.});
+  PARTHENON_REQUIRE_THROWS(init_vel.size() == 3,
+                           "Initial velocity vector should have three components.");
+  const auto v1 = init_vel.at(0);
+  const auto v2 = init_vel.at(1);
+  const auto v3 = init_vel.at(2);
+
+  pmb->par_for(
+      "Final norm. and init", 0, num_blocks - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
+        const auto &u = cons(b);
+
+        u(IM1, k, j, i) = u(IDN, k, j, i) * v1;
+        u(IM2, k, j, i) = u(IDN, k, j, i) * v2;
+        u(IM3, k, j, i) = u(IDN, k, j, i) * v3;
+
+        u(IEN, k, j, i) += 0.5 * u(IDN, k, j, i) * (SQR(v1) + SQR(v2) + SQR(v3));
+      });
+
+
+
 }
 
 
@@ -290,6 +344,571 @@ void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
                            const Real beta_dt) {
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
   GravitationalFieldSrcTerm(md, beta_dt);
+
 }
+
+
+
+//----------------------------------------------------------------------------------------
+//! \fn void StratHst(MeshData<Real> *md)
+//  \brief Hst file initialiser for new variables
+
+// TODO(?) until we are able to process multiple variables in a single hst function call
+// we'll use this enum to identify the various vars.
+enum class HstQuan {mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout,  Ms, Ma, pb };
+
+// Compute the local sum of cloud mass
+template <HstQuan hst_quan>
+Real StratHst(MeshData<Real> *md) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto fluid = hydro_pkg->Param<Fluid>("fluid");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+  const auto T_cloud_ = hydro_pkg->Param<Real>("T_cloud");
+  const auto gamma = hydro_pkg->Param<Real>("AdiabaticIndex");
+
+  const auto &prims_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+
+  // after this function is called the result is MPI_SUMed across all procs/meshblocks
+  // thus, we're only concerned with local sums
+  Real sum;
+
+  if (hst_quan == HstQuan::mcout || hst_quan == HstQuan::mwout)
+  {
+    IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::outer_x2);
+    IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::outer_x2);
+    IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::outer_x2);
+
+    auto pmesh = pmb->pmy_mesh;
+    const auto x2max = pmesh->mesh_size.xmax(X2DIR);
+    const auto H_height = hydro_pkg->Param<Real>("H_height");
+
+
+
+    pmb->par_reduce(
+      "WTopenrun::outflowing_gas", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+        const auto &prims = prims_pack(b);
+        const auto &cons = cons_pack(b);
+        const auto &coords = prims_pack.GetCoords(b);
+        const Real rho = prims(IDN, k, j, i);    
+        const Real My = cons(IM2, k, j, i);      
+        const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / rho; 
+
+        if (coords.Xc<2>(j) > x2max && My > 0.0) {
+          if (hst_quan == HstQuan::mcout && temp <= 5 * T_cloud_){
+            const Real mass = rho * coords.CellVolume(k, j, i); 
+            lsum += mass; 
+          }
+          if (hst_quan == HstQuan::mwout && temp > 5 * T_cloud_ && temp <= 10 * T_cloud_){
+            const Real mass = rho * coords.CellVolume(k, j, i); 
+            lsum += mass; 
+          }
+        }
+      },
+    sum);
+  }
+
+  else{
+
+  pmb->par_reduce(
+    "WTOpenRun::hst_calc", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+    KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+        const auto &cons = cons_pack(b);
+        const auto &prim = prims_pack(b);
+        const auto &coords = prims_pack.GetCoords(b);
+        const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+
+
+        const auto vel2 = (prim(IV1, k, j, i) * prim(IV1, k, j, i) +
+                           prim(IV2, k, j, i) * prim(IV2, k, j, i) +
+                           prim(IV3, k, j, i) * prim(IV3, k, j, i));
+
+        const auto c_s =
+            std::sqrt(gamma * prim(IPR, k, j, i) / prim(IDN, k, j, i)); // speed of sound
+
+        const auto e_kin = 0.5 * prim(IDN, k, j, i) * vel2;
+
+        if (hst_quan == HstQuan::Ms) { // Ms
+          lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
+        }
+
+        if (fluid == Fluid::glmmhd) {
+          const auto B2 = (prim(IB1, k, j, i) * prim(IB1, k, j, i) +
+                           prim(IB2, k, j, i) * prim(IB2, k, j, i) +
+                           prim(IB3, k, j, i) * prim(IB3, k, j, i));
+
+          const auto e_mag = 0.5 * B2;
+
+          if (hst_quan == HstQuan::Ma) { // Ma
+            lsum += std::sqrt(e_kin / e_mag) * coords.CellVolume(k, j, i);
+          } else if (hst_quan == HstQuan::pb) { // plasma beta
+            lsum += prim(IPR, k, j, i) / e_mag * coords.CellVolume(k, j, i);
+          }
+        }
+
+
+        if (temp <= 2*T_cloud_) { 
+
+          if (hst_quan == HstQuan::mc) {
+            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+          if (hst_quan == HstQuan::Mcx1) {
+            lsum += cons(IM1, k, j, i) *  coords.CellVolume(k, j, i);
+          }
+          if (hst_quan == HstQuan::Mcx2) {
+            lsum +=  cons(IM2, k, j, i) * coords.CellVolume(k, j, i);
+          }
+          if (hst_quan == HstQuan::Mcx3) {
+            lsum +=  cons(IM3, k, j, i) * coords.CellVolume(k, j, i);
+          }
+          
+        }
+        if (temp <= 10 * T_cloud_){
+          if (hst_quan == HstQuan::mbw){
+            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+          }
+        }
+      },
+      sum);
+  }
+
+  return sum;
+}
+
+
+void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg) {
+
+  
+  auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
+  const auto fluid = pkg->Param<Fluid>("fluid");
+
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::mc>, "mc"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::mc>, "mbw"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::Mcx1>, "Mcx1"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::Mcx2>, "Mcx2"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::Mcx3>, "Mcx3"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::mcout>, "mcout"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::mwout>, "mwout"));
+
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::Ms>, "Ms"));
+  if (fluid == Fluid::glmmhd) {
+    hst_vars.emplace_back(parthenon::HistoryOutputVar(
+        parthenon::UserHistoryOperation::sum, StratHst<HstQuan::Ma>, "Ma"));
+    hst_vars.emplace_back(parthenon::HistoryOutputVar(
+        parthenon::UserHistoryOperation::sum, StratHst<HstQuan::pb>, "plasma_beta"));
+  }
+  
+  pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
+
+
+
+  //Driving turbulence parameters
+  Metadata m({Metadata::Cell, Metadata::Derived, Metadata::OneCopy},
+             std::vector<int>({3}));
+  pkg->AddField("acc", m);
+
+  auto num_modes =
+      pin->GetInteger("problem/turbulence", "num_modes"); // number of wavemodes
+
+  uint32_t rseed =
+      pin->GetOrAddInteger("problem/turbulence", "rseed", -1); // seed for random number.
+  pkg->AddParam<>("turbulence/rseed", rseed);
+
+  auto k_peak =
+      pin->GetOrAddReal("problem/turbulence", "kpeak", 0.0); // peak of the forcing spec
+  pkg->AddParam<>("turbulence/kpeak", k_peak);
+
+  auto accel_rms =
+      pin->GetReal("problem/turbulence", "accel_rms"); // turbulence amplitude
+  pkg->AddParam<>("turbulence/accel_rms", accel_rms);
+
+  auto t_corr =
+      pin->GetReal("problem/turbulence", "corr_time"); // forcing autocorrelation time
+  pkg->AddParam<>("turbulence/t_corr", t_corr);
+
+  Real sol_weight = pin->GetReal("problem/turbulence", "sol_weight"); // solenoidal weight
+  pkg->AddParam<>("turbulence/sol_weight", sol_weight);
+
+  // list of wavenumber vectors
+  auto k_vec = ParArray2D<Real>("k_vec", 3, num_modes);
+  auto k_vec_host = Kokkos::create_mirror_view(k_vec);
+  for (int j = 0; j < 3; j++) {
+    for (int i = 1; i <= num_modes; i++) {
+      k_vec_host(j, i - 1) =
+          pin->GetInteger("modes", "k_" + std::to_string(i) + "_" + std::to_string(j));
+    }
+  }
+  Kokkos::deep_copy(k_vec, k_vec_host);
+
+  auto few_modes_ft = FewModesFT(pin, pkg, "turbulence", num_modes, k_vec, k_peak,
+                                 sol_weight, t_corr, rseed);
+  // object must be mutable to update the internal state of the RNG
+  pkg->AddParam<>("turbulence/few_modes_ft", few_modes_ft, true);
+
+  // Check if this is is a restart and restore previous state
+  if (pin->DoesParameterExist("problem/turbulence", "accel_hat_0_0_r")) {
+    // Need to extract mutable object from Params here as the original few_modes_ft above
+    // and the one in Params are different instances
+    auto *pfew_modes_ft = pkg->MutableParam<FewModesFT>("turbulence/few_modes_ft");
+    // Restore (common) acceleration field in spectral space
+    auto accel_hat = pfew_modes_ft->GetVarHat();
+    auto accel_hat_host = Kokkos::create_mirror_view(accel_hat);
+    for (int i = 0; i < 3; i++) {
+      for (int m = 0; m < num_modes; m++) {
+        auto real =
+            pin->GetReal("problem/turbulence", "accel_hat_" + std::to_string(i) + "_" +
+                                                   std::to_string(m) + "_r");
+        auto imag =
+            pin->GetReal("problem/turbulence", "accel_hat_" + std::to_string(i) + "_" +
+                                                   std::to_string(m) + "_i");
+        accel_hat_host(i, m) = Complex(real, imag);
+      }
+    }
+    Kokkos::deep_copy(accel_hat, accel_hat_host);
+
+    // Restore state of random number gen
+    {
+      std::istringstream iss(pin->GetString("problem/turbulence", "state_rng"));
+      pfew_modes_ft->RestoreRNG(iss);
+    }
+    // Restore state of dist
+    {
+      std::istringstream iss(pin->GetString("problem/turbulence", "state_dist"));
+      pfew_modes_ft->RestoreDist(iss);
+    }
+  }
+
+}
+
+
+
+void ProblemInitTracerData(ParameterInput * /*pin*/,
+                           parthenon::StateDescriptor *tracer_pkg) {
+  // Number of lookback times to be stored (in powers of 2,
+  // i.e., 12 allows to go from 0, 2^0 = 1, 2^1 = 2, 2^2 = 4, ..., 2^10 = 1024 cycles)
+  const int n_lookback = 12; // could even be made an input parameter if required/desired
+                             // (though it should probably not be changeable for restarts)
+  tracer_pkg->AddParam("turbulence/n_lookback", n_lookback);
+
+  const auto swarm_name = tracer_pkg->Param<std::string>("swarm_name");
+  // Using a vector to reduce code duplication.
+  Metadata vreal_swarmvalue_metadata(
+      {Metadata::Real, Metadata::Vector, Metadata::Restart},
+      std::vector<int>{n_lookback});
+  tracer_pkg->AddSwarmValue("s", swarm_name, vreal_swarmvalue_metadata);
+  tracer_pkg->AddSwarmValue("sdot", swarm_name, vreal_swarmvalue_metadata);
+  // Timestamps for the lookback entries
+  tracer_pkg->AddParam<>("turbulence/t_lookback", std::vector<Real>(n_lookback),
+                         Params::Mutability::Restart);
+}
+
+// SetPhases is used as InitMeshBlockUserData because phases need to be reset on remeshing
+void SetPhases(MeshBlock *pmb, ParameterInput *pin) {
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  auto few_modes_ft = hydro_pkg->Param<FewModesFT>("turbulence/few_modes_ft");
+  few_modes_ft.SetPhases(pmb, pin);
+}
+
+
+//----------------------------------------------------------------------------------------
+//! \fn void Generate()
+//  \brief Generate velocity pertubation.
+
+void Generate(MeshData<Real> *md, Real dt) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  // Must be mutable so the internal RNG state is updated
+  auto *few_modes_ft = hydro_pkg->MutableParam<FewModesFT>("turbulence/few_modes_ft");
+  few_modes_ft->Generate(md, dt, "acc");
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void Perturb(Real dt)
+//  \brief Add velocity perturbation to the hydro variables
+
+void Perturb(MeshData<Real> *md, const Real dt) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+  auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  auto acc_pack = md->PackVariables(std::vector<std::string>{"acc"});
+
+  Kokkos::Array<Real, 4> sums{{0.0, 0.0, 0.0, 0.0}};
+  Kokkos::parallel_reduce(
+      "forcing: calc mean momenum",
+      Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
+          {0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e + 1, jb.e + 1, ib.e + 1},
+          {1, 1, 1, ib.e + 1 - ib.s}),
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lmass_sum,
+                    Real &lim1_sum, Real &lim2_sum, Real &lim3_sum) {
+        const auto &coords = cons_pack.GetCoords(b);
+        auto den = cons_pack(b, IDN, k, j, i);
+        lmass_sum += den * coords.CellVolume(k, j, i);
+        lim1_sum += den * acc_pack(b, 0, k, j, i) * coords.CellVolume(k, j, i);
+        lim2_sum += den * acc_pack(b, 1, k, j, i) * coords.CellVolume(k, j, i);
+        lim3_sum += den * acc_pack(b, 2, k, j, i) * coords.CellVolume(k, j, i);
+      },
+      sums[0], sums[1], sums[2], sums[3]);
+
+#ifdef MPI_PARALLEL
+  // Sum the perturbations over all processors
+  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 4, MPI_PARTHENON_REAL,
+                                    MPI_SUM, MPI_COMM_WORLD));
+#endif // MPI_PARALLEL
+
+  pmb->par_reduce(
+      "forcing: remove mean momentum and calc norm", 0, acc_pack.GetDim(5) - 1, 0, 2,
+      kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int n, const int k, const int j, const int i,
+                    Real &lampl_sum) {
+        const auto &coords = acc_pack.GetCoords(b);
+        acc_pack(b, n, k, j, i) -= sums[n + 1] / sums[0];
+        lampl_sum += SQR(acc_pack(b, n, k, j, i)) * coords.CellVolume(k, j, i);
+      },
+      sums[0]);
+
+#ifdef MPI_PARALLEL
+  // Sum the perturbations over all processors
+  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 1, MPI_PARTHENON_REAL,
+                                    MPI_SUM, MPI_COMM_WORLD));
+#endif // MPI_PARALLEL
+
+  const auto Lx =
+      pmb->pmy_mesh->mesh_size.xmax(X1DIR) - pmb->pmy_mesh->mesh_size.xmin(X1DIR);
+  const auto Ly =
+      pmb->pmy_mesh->mesh_size.xmax(X2DIR) - pmb->pmy_mesh->mesh_size.xmin(X2DIR);
+  const auto Lz =
+      pmb->pmy_mesh->mesh_size.xmax(X3DIR) - pmb->pmy_mesh->mesh_size.xmin(X3DIR);
+  const auto accel_rms = hydro_pkg->Param<Real>("turbulence/accel_rms");
+  auto norm = accel_rms / std::sqrt(sums[0] / (Lx * Ly * Lz));
+
+  pmb->par_for(
+      "apply momemtum perturb", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
+      ib.e, KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
+        auto &cons = cons_pack(b);
+        auto &acc = acc_pack(b);
+
+        auto &acc_0 = acc(0, k, j, i);
+        auto &acc_1 = acc(1, k, j, i);
+        auto &acc_2 = acc(2, k, j, i);
+
+        // normalizing accel field here so that the actual values are used in the output
+        acc_0 *= norm;
+        acc_1 *= norm;
+        acc_2 *= norm;
+
+        Real qa = dt * cons(IDN, k, j, i);
+        cons(IEN, k, j, i) +=
+            (cons(IM1, k, j, i) * dt * acc_0 + cons(IM2, k, j, i) * dt * acc_1 +
+             cons(IM3, k, j, i) * dt * acc_2 +
+             (SQR(acc_0) + SQR(acc_1) + SQR(acc_2)) * qa * qa / (2 * cons(IDN, k, j, i)));
+
+        cons(IM1, k, j, i) += qa * acc_0;
+        cons(IM2, k, j, i) += qa * acc_1;
+        cons(IM3, k, j, i) += qa * acc_2;
+      });
+}
+
+//----------------------------------------------------------------------------------------
+//! \fn void FewModesTurbulenceDriver::Driving(void)
+//  \brief Generate and Perturb the velocity field
+
+void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
+  // evolve forcing
+
+  if (drive_turbulence){
+    Generate(md, dt);
+
+    // actually drive turbulence
+    Perturb(md, dt);
+  }
+}
+
+void UserWorkBeforeOutput(MeshBlock *pmb, ParameterInput *pin,
+                          const parthenon::SimTime & /*tm*/) {
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+
+  // Store (common) acceleration field in spectral space
+  auto few_modes_ft = hydro_pkg->Param<FewModesFT>("turbulence/few_modes_ft");
+  auto var_hat = few_modes_ft.GetVarHat();
+  auto accel_hat_host =
+      Kokkos::create_mirror_view_and_copy(parthenon::HostMemSpace(), var_hat);
+
+  const auto num_modes = few_modes_ft.GetNumModes();
+  for (int i = 0; i < 3; i++) {
+    for (int m = 0; m < num_modes; m++) {
+      pin->SetReal("problem/turbulence",
+                   "accel_hat_" + std::to_string(i) + "_" + std::to_string(m) + "_r",
+                   accel_hat_host(i, m).real());
+      pin->SetReal("problem/turbulence",
+                   "accel_hat_" + std::to_string(i) + "_" + std::to_string(m) + "_i",
+                   accel_hat_host(i, m).imag());
+    }
+  }
+  // store state of random number gen
+  auto state_rng = few_modes_ft.GetRNGState();
+  pin->SetString("problem/turbulence", "state_rng", state_rng);
+  // store state of distribution
+  auto state_dist = few_modes_ft.GetDistState();
+  pin->SetString("problem/turbulence", "state_dist", state_dist);
+}
+
+TaskStatus ProblemFillTracers(MeshData<Real> *md, const parthenon::SimTime &tm,
+                              const Real dt) {
+  const auto current_cycle = tm.ncycle;
+
+  auto tracers_pkg = md->GetParentPointer()->packages.Get("tracers");
+  const auto n_lookback = tracers_pkg->Param<int>("turbulence/n_lookback");
+  // Params (which is storing t_lookback) is shared across all blocks so we update it
+  // outside the block loop. Note, that this is a standard vector, so it cannot be used
+  // in the kernel (but also don't need to be used as can directly update it)
+  auto t_lookback = tracers_pkg->Param<std::vector<Real>>("turbulence/t_lookback");
+  auto dncycle = static_cast<int>(Kokkos::pow(2, n_lookback - 2));
+  auto idx = n_lookback - 1;
+  while (dncycle > 0) {
+    if (current_cycle % dncycle == 0) {
+      t_lookback[idx] = t_lookback[idx - 1];
+    }
+    dncycle /= 2;
+    idx -= 1;
+  }
+  t_lookback[0] = tm.time;
+  // Write data back to Params dict
+  tracers_pkg->UpdateParam("turbulence/t_lookback", t_lookback);
+
+  // TODO(pgrete) Benchmark atomic and potentially update to proper reduction instead of
+  // atomics.
+  //  Used for the parallel reduction. Could be reused but this way it's initalized to
+  //  0.
+  // n_lookback + 1 as it also carries <s> and <sdot>
+  parthenon::ParArray2D<Real> corr("tracer correlations", 2, n_lookback + 1);
+  int64_t num_particles_total = 0;
+
+  for (int b = 0; b < md->NumBlocks(); b++) {
+    auto *pmb = md->GetBlockData(b)->GetBlockPointer();
+    auto &sd = pmb->meshblock_data.Get()->GetSwarmData();
+    auto &swarm = sd->Get("tracers");
+
+    // TODO(pgrete) cleanup once get swarm packs (currently in development upstream)
+    // pull swarm vars
+    auto &rho = swarm->Get<Real>("rho").Get();
+    auto &s = swarm->Get<Real>("s").Get();
+    auto &sdot = swarm->Get<Real>("sdot").Get();
+
+    auto swarm_d = swarm->GetDeviceContext();
+
+    // update loop.
+    const int max_active_index = swarm->GetMaxActiveIndex();
+    pmb->par_for(
+        "Turbulence::Fill Tracers", 0, max_active_index, KOKKOS_LAMBDA(const int n) {
+          if (swarm_d.IsActive(n)) {
+            auto dncycle = static_cast<int>(Kokkos::pow(2, n_lookback - 2));
+            auto s_idx = n_lookback - 1;
+            while (dncycle > 0) {
+              if (current_cycle % dncycle == 0) {
+                s(s_idx, n) = s(s_idx - 1, n);
+                sdot(s_idx, n) = sdot(s_idx - 1, n);
+              }
+              dncycle /= 2;
+              s_idx -= 1;
+            }
+            s(0, n) = Kokkos::log(rho(n));
+            sdot(0, n) = (s(0, n) - s(1, n)) / dt;
+
+            // Now that all s and sdot entries are updated, we calculate the (mean)
+            // correlations
+            for (s_idx = 0; s_idx < n_lookback; s_idx++) {
+              Kokkos::atomic_add(&corr(0, s_idx), s(0, n) * s(s_idx, n));
+              Kokkos::atomic_add(&corr(1, s_idx), sdot(0, n) * sdot(s_idx, n));
+            }
+            Kokkos::atomic_add(&corr(0, n_lookback), s(0, n));
+            Kokkos::atomic_add(&corr(1, n_lookback), sdot(0, n));
+          }
+        });
+    num_particles_total += swarm->GetNumActive();
+  } // loop over all blocks on this rank (this MeshData container)
+
+  // Results still live in device memory. Copy to host for global reduction and output.
+  auto corr_h = Kokkos::create_mirror_view_and_copy(parthenon::HostMemSpace(), corr);
+#ifdef MPI_PARALLEL
+  if (parthenon::Globals::my_rank == 0) {
+    PARTHENON_MPI_CHECK(MPI_Reduce(MPI_IN_PLACE, corr_h.data(), corr_h.GetSize(),
+                                   MPI_PARTHENON_REAL, MPI_SUM, 0, MPI_COMM_WORLD));
+    PARTHENON_MPI_CHECK(MPI_Reduce(MPI_IN_PLACE, &num_particles_total, 1, MPI_INT64_T,
+                                   MPI_SUM, 0, MPI_COMM_WORLD));
+  } else {
+    PARTHENON_MPI_CHECK(MPI_Reduce(corr_h.data(), corr_h.data(), corr_h.GetSize(),
+                                   MPI_PARTHENON_REAL, MPI_SUM, 0, MPI_COMM_WORLD));
+    PARTHENON_MPI_CHECK(MPI_Reduce(&num_particles_total, &num_particles_total, 1,
+                                   MPI_INT64_T, MPI_SUM, 0, MPI_COMM_WORLD));
+  }
+#endif
+  if (parthenon::Globals::my_rank == 0) {
+    // Turn sum into mean
+    for (int i = 0; i < n_lookback + 1; i++) {
+      corr_h(0, i) /= static_cast<Real>(num_particles_total);
+      corr_h(1, i) /= static_cast<Real>(num_particles_total);
+    }
+
+    // and write data
+    std::ofstream outfile;
+    const std::string fname("correlations.csv");
+    // On startup, write header
+    if (current_cycle == 0) {
+      outfile.open(fname, std::ofstream::out);
+      outfile << "# cycle, time, s, sdot";
+      for (const auto &var : {"corr_s", "corr_sdot", "t_lookback"}) {
+        for (int i = 0; i < n_lookback; i++) {
+          outfile << ", " << var << "[" << i << "]";
+        }
+        outfile << std::endl;
+      }
+    } else {
+      outfile.open(fname, std::ofstream::out | std::ofstream::app);
+    }
+
+    outfile << tm.ncycle << "," << tm.time;
+
+    // <s> and <sdot>
+    outfile << "," << corr_h(0, n_lookback);
+    outfile << "," << corr_h(1, n_lookback);
+    // <corr(s)> and <corr(sdot)>
+    for (int j = 0; j < 2; j++) {
+      for (int i = 0; i < n_lookback; i++) {
+        outfile << "," << corr_h(j, i);
+      }
+    }
+    for (int i = 0; i < n_lookback; i++) {
+      outfile << "," << t_lookback[i];
+    }
+    outfile << std::endl;
+
+    outfile.close();
+  }
+
+  return TaskStatus::complete;
+}
+
+
+
 }
 
