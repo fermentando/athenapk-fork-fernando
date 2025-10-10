@@ -159,13 +159,6 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
   auto &phases_k = base->Get(prefix_ + "_phases_k").data;
 
 
-  Real Lxmin = std::min({Lx1, Lx2, Lx3});
-
-  // Scaling k modes to match that of the smalles dimensions length
-  const auto scale_modes_1 = Lx1 / Lxmin;
-  const auto scale_modes_2 = Lx2 / Lxmin;
-  const auto scale_modes_3 = Lx3 / Lxmin;
-
   const auto ng = fill_ghosts_ ? parthenon::Globals::nghost : 0;
   pmb->par_for(
       "FMFT: calc phases_i", 0, nx1 - 1 + 2 * ng, KOKKOS_LAMBDA(int i) {
@@ -174,7 +167,7 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
         Complex phase;
 
         for (int m = 0; m < num_modes; m++) {
-          w_kx = k_vec(0, m) * 2. * M_PI * scale_modes_1 / static_cast<Real>(gnx1);
+          w_kx = k_vec(0, m) * 2. * M_PI  / static_cast<Real>(gnx1);
           // adjust phase factor to Complex->Real IFT: u_hat*(k) = u_hat(-k)
           if (k_vec(0, m) == 0.0) {
             phase = 0.5 * Kokkos::exp(I * w_kx * gi);
@@ -193,7 +186,7 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
         Complex phase;
 
         for (int m = 0; m < num_modes; m++) {
-          w_ky = k_vec(1, m) * 2. * M_PI * scale_modes_2 / static_cast<Real>(gnx2);
+          w_ky = k_vec(1, m) * 2. * M_PI  / static_cast<Real>(gnx2);
           phase = Kokkos::exp(I * w_ky * gj);
           phases_j(j, m, 0) = phase.real();
           phases_j(j, m, 1) = phase.imag();
@@ -207,7 +200,7 @@ void FewModesFT::SetPhases(MeshBlock *pmb, ParameterInput *pin) {
         Complex phase;
 
         for (int m = 0; m < num_modes; m++) {
-          w_kz = k_vec(2, m) * 2. * M_PI *  scale_modes_3 / static_cast<Real>(gnx3);
+          w_kz = k_vec(2, m) * 2. * M_PI  / static_cast<Real>(gnx3);
           phase = Kokkos::exp(I * w_kz * gk);
           phases_k(k, m, 0) = phase.real();
           phases_k(k, m, 1) = phase.imag();
