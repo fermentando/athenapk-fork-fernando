@@ -382,7 +382,7 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
         //if (z_window_ > 0) {
         Real y = (coords.Xc<2>(j) - x2min) / Lx2; // [0,1]
         Real window = 1.0;
-        if (false) {
+        if (true) {
           if (y < 0.1) {
           // taper to zero below 0.1
             window = exp(-(0.1 - y) / 0.05);  // adjust 0.02 for sharpness
