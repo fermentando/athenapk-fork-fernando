@@ -43,6 +43,14 @@ FewModesFT::FewModesFT(parthenon::ParameterInput *pin, parthenon::StateDescripto
   const auto gnx1 = pin->GetInteger("parthenon/mesh", "nx1");
   const auto gnx2 = pin->GetInteger("parthenon/mesh", "nx2");
   const auto gnx3 = pin->GetInteger("parthenon/mesh", "nx3");
+
+  auto wxmin = pin->GetOrAddReal("problem/turbulence", "window_xmin", -1.0);
+  auto wxmax = pin->GetOrAddReal("problem/turbulence", "window_xmax", -1.0);
+  bool window_turbulence = pin->GetOrAddBoolean("problem/turbulence", "window_turbulence", false);
+
+  pkg->AddParam<>("window_xmin", wxmin);
+  pkg->AddParam<>("window_xmax", wxmax);
+  pkg->AddParam<>("window_turbulence", window_turbulence);
   // Need to make this comparison on the host as (for some reason) an extended cuda device
   // lambda cannot live in the constructor of an object.
   auto k_vec_host = k_vec.GetHostMirrorAndCopy();
@@ -212,13 +220,16 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
                           const std::string &var_name) {
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto pm = pmb->pmy_mesh;
-  Real z_window_ = 0.419;  //for L = 1,  0.625 for domain L = 1.5;
-  Real denom_window_ = 0.125;
+  auto pkg = pmb->packages.Get("Hydro");
+  Real wxmin = pkg->Param<Real>("window_xmin");
+  Real wxmax = pkg->Param<Real>("window_xmax");
+  bool window_turbulence = pkg->Param<bool>("window_turbulence");
   
   const auto Lx1 = pm->mesh_size.xmax(X1DIR) - pm->mesh_size.xmin(X1DIR);
   const auto Lx2 = pm->mesh_size.xmax(X2DIR) - pm->mesh_size.xmin(X2DIR);
   const auto Lx3 = pm->mesh_size.xmax(X3DIR) - pm->mesh_size.xmin(X3DIR);
   const auto x2min = pm->mesh_size.xmin(X2DIR);
+  const auto x2max = pm->mesh_size.xmax(X2DIR);
 
   Real Lxmin = std::min({Lx1, Lx2, Lx3});
 
@@ -382,13 +393,13 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
         //if (z_window_ > 0) {
         Real y = (coords.Xc<2>(j) - x2min) / Lx2; // [0,1]
         Real window = 1.0;
-        if (true) {
-          if (y < 0.1) {
+        if (window_turbulence) {
+          if (y < wxmin) {
           // taper to zero below 0.1
-            window = exp(-(0.1 - y) / 0.05);  // adjust 0.02 for sharpness
-          } else if (y > 0.8) {
+            window = exp(-(wxmin - y) / abs(wxmin)* 3);  // adjust 0.02 for sharpness
+          } else if (y > wxmax) {
             // taper to zero above 0.8
-            window = exp(-(y - 0.8) / 0.125);  // adjust 0.02 for sharpness
+            window = exp(-(y - wxmax) / abs(1 - wxmax) * 3);  // adjust 0.02 for sharpness
           } 
         } 
 

@@ -74,9 +74,20 @@ void UserWorkBeforeOutput(MeshBlock *pmb, ParameterInput *pin,
                           const parthenon::SimTime &tm);
 TaskStatus ProblemFillTracers(MeshData<Real> *md, const parthenon::SimTime &tm,
                               const Real dt);
-void Cleanup();
 } // namespace stratified_box
 
+namespace stratified_box_simple {
+using namespace parthenon;
+
+void InitUserMeshData(Mesh *mesh, ParameterInput *pin);
+void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md);
+void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
+                           const Real beta_dt);
+void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
+                               const parthenon::Real beta_dt);
+void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg);
+
+} // namespace stratified_box
 namespace blast {
 using namespace parthenon::driver::prelude;
 

@@ -94,6 +94,11 @@ int main(int argc, char *argv[]) {
     Hydro::ProblemSourceFirstOrder = stratified_box::Driving;
     pman.app_input->InitMeshBlockUserData = stratified_box::SetPhases;
     pman.app_input->MeshBlockUserWorkBeforeOutput = stratified_box::UserWorkBeforeOutput;
+  }else if (problem == "stratified_box_simple") {
+    pman.app_input->InitUserMeshData = stratified_box_simple::InitUserMeshData;
+    pman.app_input->MeshProblemGenerator = stratified_box_simple::ProblemGenerator;
+    Hydro::ProblemSourceUnsplit = stratified_box_simple::StratUnsplitSrcTerm;
+    Hydro::ProblemInitPackageData = stratified_box_simple::ProblemInitPackageData;
   }else if (problem == "blast") {
     pman.app_input->InitUserMeshData = blast::InitUserMeshData;
     pman.app_input->ProblemGenerator = blast::ProblemGenerator;
