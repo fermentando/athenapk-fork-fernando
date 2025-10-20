@@ -58,9 +58,6 @@ using parthenon::ParArray2D;
 using utils::few_modes_ft::Complex;
 using utils::few_modes_ft::FewModesFT;
 
-bool drive_turbulence;
-
-
 void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
                                const parthenon::Real beta_dt) {
   using parthenon::IndexDomain;
@@ -74,32 +71,27 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
+  const auto a_over_H = hydro_pkg->Param<Real>("a_over_H");
   const auto surface_density = hydro_pkg->Param<Real>("surface_density");
-  const auto H_s = hydro_pkg->Param<Real>("H_height");
+  const auto H = hydro_pkg->Param<Real>("H_height");
   const auto units = hydro_pkg->Param<Units>("units");    
+  const auto code_units_length = units.code_length_cgs();
   const auto G = units.gravitational_constant();
 
   parthenon::par_for(
-      DEFAULT_LOOP_PATTERN, "GravitationalFieldSrcTerm",
-      parthenon::DevExecSpace(), 0,
+      DEFAULT_LOOP_PATTERN, "GravitationalFieldSrcTerm", parthenon::DevExecSpace(), 0,
       cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         auto &cons = cons_pack(b);
         auto &prim = prim_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
 
-        // Vertical coordinate (z)
-        const Real y = coords.Xc<2>(j);
-        printf("Gravity g = %f\n", G);
+        auto y_norm = coords.Xc<2>(j) / (a_over_H * H) * code_units_length;
+        const Real g_z =  2 * M_PI * G * surface_density * y_norm / std::sqrt(1 + y_norm * y_norm);
 
-        // Self-gravitating slab acceleration: g_z = 4π G Σ tanh(z/H_s)
-        const Real g_y = 2.0 * M_PI * G * surface_density * std::tanh(y / H_s);
-
-        // Apply gravitational source
+        // Apply g_r as a source term
         const Real den = prim(IDN, k, j, i);
-        const Real src = beta_dt * den * g_y;
-
-        // Momentum (IM2 = vertical) and energy updates
+        const Real src = (y_norm == 0) ? 0 : beta_dt * den * g_z;
         cons(IM2, k, j, i) -= src;
         cons(IEN, k, j, i) -= src * prim(IV2, k, j, i);
       });
@@ -127,7 +119,6 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   auto surface_density = pin->GetReal("problem/stratified_box", "surface_density");
   auto T_base = pin->GetReal("problem/stratified_box", "T_base");
   auto T_cloud = pin->GetReal("problem/stratified_box", "T_cloud");
-  drive_turbulence = pin->GetOrAddBoolean("problem/turbulence", "drive_turbulence", true);
 
   pkg->AddParam<Real>("a_over_H", a_over_H );
   pkg->AddParam<Real>("surface_density", surface_density);
@@ -142,6 +133,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   pkg->AddParam<Real>("H_height", H_height);
 
   const auto t_ff = std::sqrt(2.0 * H_height / g0); 
+  
 
   std::stringstream msg;
   msg << std::setprecision(2);
@@ -351,6 +343,98 @@ void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
   GravitationalFieldSrcTerm(md, beta_dt);
 
+}
+
+
+
+///========================================================================================
+/// Create boundary conditions from softness profile
+///========================================================================================
+
+KOKKOS_INLINE_FUNCTION
+double rho_profile_Y(double Y, double rho0, double a, double H) {
+    const double arg = Y / (a * H);
+    return rho0 * exp(-a * (sqrt(1.0 + arg*arg) - 1.0));
+}
+
+void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
+
+  const auto nb = IndexRange{0,0};
+  const bool fine = false;
+
+  // Local copies of parameters for device lambda
+  auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
+  auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
+  auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const double rho0 = surface_density / 2/bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
+
+  const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+
+
+  pmb->par_for_bndry(
+      "StratOutflowInnerX2", nb, IndexDomain::inner_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+          cons(IV1,k,j,i) = cons(IV1,k,jb.s,i);
+          cons(IV3,k,j,i) = cons(IV3,k,jb.s,i);
+
+          // Normal velocity: zero if inflow
+          //if (cons(IV2,k,jb.s,i) >= 0.0) cons(IV2,k,j,i) = 0.0;
+          cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
+
+          Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
+          cons(IPR,k,j,i) = rhoY * T;
+      });
+}
+
+void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
+
+  const auto nb = IndexRange{0,0};
+  const bool fine = false;
+
+  auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
+  auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
+  auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const double rho0 = surface_density / 2/ bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
+  const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+
+
+  pmb->par_for_bndry(
+      "StratOutflowInnerX2", nb, IndexDomain::outer_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+          cons(IV1,k,j,i) = cons(IV1,k,jb.s,i);
+          cons(IV3,k,j,i) = cons(IV3,k,jb.s,i);
+
+          // Normal velocity: zero if inflow
+          //if (cons(IV2,k,jb.s,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
+          cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
+
+          Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
+          cons(IPR,k,j,i) = rhoY * T;
+      });
 }
 
 

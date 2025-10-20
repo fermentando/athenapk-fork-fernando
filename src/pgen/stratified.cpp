@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <sys/stat.h> 
 #include "globals.hpp"
+#include <filesystem>
 
 // Parthenon headers
 #include "basic_types.hpp"
@@ -59,6 +60,11 @@ using utils::few_modes_ft::Complex;
 using utils::few_modes_ft::FewModesFT;
 
 bool drive_turbulence;
+Real d_cgs_factor, m_cgs_factor, e_cgs_factor;
+Real c_s;
+std::string bc_filename_inner, bc_filename_outer;
+int n_ghosts;
+
 
 
 void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
@@ -78,6 +84,7 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto surface_density = hydro_pkg->Param<Real>("surface_density");
   const auto H = hydro_pkg->Param<Real>("H_height");
   const auto units = hydro_pkg->Param<Units>("units");    
+  const auto code_units_length = units.code_length_cgs();
   const auto G = units.gravitational_constant();
 
   parthenon::par_for(
@@ -88,7 +95,7 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         auto &prim = prim_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
 
-        auto y_norm = coords.Xc<2>(j) / (a_over_H * H);
+        auto y_norm = coords.Xc<2>(j) / (a_over_H * H) * code_units_length;
         const Real g_z =  2 * M_PI * G * surface_density * y_norm / std::sqrt(1 + y_norm * y_norm);
 
         // Apply g_r as a source term
@@ -122,13 +129,15 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   auto T_base = pin->GetReal("problem/stratified_box", "T_base");
   auto T_cloud = pin->GetReal("problem/stratified_box", "T_cloud");
   drive_turbulence = pin->GetOrAddBoolean("problem/turbulence", "drive_turbulence", true);
+  n_ghosts = pin->GetOrAddInteger("mesh", "nghost", 4);
 
   pkg->AddParam<Real>("a_over_H", a_over_H );
   pkg->AddParam<Real>("surface_density", surface_density);
   pkg->AddParam<Real>("T_cloud", T_cloud);
+  pkg->AddParam<Real>("gamma", gamma);
 
   const auto g0 = 2 * M_PI * units.gravitational_constant() * surface_density;
-  auto c_s = std::sqrt(T_base / mbar_over_kb);
+  c_s = std::sqrt(T_base / mbar_over_kb);
   auto H_height = c_s*c_s/ g0;
 
   pkg->AddParam<Real>("H_height", H_height);
@@ -136,6 +145,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
   // Relevant timescales
   auto t_ff = std::sqrt(2.0 * H_height / g0);
+
 
   std::stringstream msg;
   msg << std::setprecision(2);
@@ -177,6 +187,8 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   Units units(pin);
 
   const std::string ics_filename = pin->GetString("job", "bin_input_file");
+  bc_filename_inner = pin->GetString("job", "bc_input_file_inner");
+  bc_filename_outer = pin->GetString("job", "bc_input_file_outer");
   std::string varname = ics_filename;
   size_t pos = varname.find(".bp");
 
@@ -188,9 +200,9 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   adios2::Variable<double> myvar_in = get_var.InquireVariable<double>(varname.erase(pos));
   PARTHENON_REQUIRE_THROWS(myvar_in, "Could not find variable name in file.");
 
-  auto d_cgs_factor = 1. / units.code_density_cgs();
-  auto m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
-  auto e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
+  d_cgs_factor = 1. / units.code_density_cgs();
+  m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
+  e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
 
 
   const auto nx = pmesh->GetDefaultBlockSize().nx(parthenon::X1DIR);
@@ -348,6 +360,554 @@ void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
 }
 
 
+///========================================================================================
+/// Create boundary conditions from softness profile
+///========================================================================================
+
+KOKKOS_INLINE_FUNCTION
+double rho_profile_Y(double Y, double rho0, double a, double H) {
+    const double arg = Y / (a * H);
+    return rho0 * exp(-a * (sqrt(1.0 + arg*arg) - 1.0));
+}
+
+void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
+
+  const auto nb = IndexRange{0,0};
+  const bool fine = false;
+
+  // Local copies of parameters for device lambda
+  auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
+  auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
+  auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const double rho0 = surface_density / 2/bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
+
+  const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+
+
+  pmb->par_for_bndry(
+      "StratOutflowInnerX2", nb, IndexDomain::inner_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+          cons(IV1,k,j,i) = cons(IV1,k,jb.s,i);
+          cons(IV3,k,j,i) = cons(IV3,k,jb.s,i);
+
+          // Normal velocity: zero if inflow
+          if (cons(IV2,k,jb.s,i) >= 0.0) cons(IV2,k,j,i) = 0.0;
+          else cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
+
+          Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
+          cons(IPR,k,j,i) = rhoY * T;
+      });
+}
+
+void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
+
+  const auto nb = IndexRange{0,0};
+  const bool fine = false;
+
+  auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
+  auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
+  auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const double rho0 = surface_density / 2/ bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
+  const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+
+
+  pmb->par_for_bndry(
+      "StratOutflowInnerX2", nb, IndexDomain::outer_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+          cons(IV1,k,j,i) = cons(IV1,k,jb.s,i);
+          cons(IV3,k,j,i) = cons(IV3,k,jb.s,i);
+
+          // Normal velocity: zero if inflow
+          if (cons(IV2,k,jb.s,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
+          else cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
+
+          Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
+          cons(IPR,k,j,i) = rhoY * T;
+      });
+}
+
+
+
+
+
+
+void ReadBCX2Inner(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
+  
+  const auto nghosts = n_ghosts;
+  const auto nb = IndexRange{0, 0};
+  const bool fine = false;
+  
+  // Get block dimensions
+  const auto nx = pmb->block_size.nx(X1DIR);
+  const auto ny = pmb->block_size.nx(X2DIR);
+  const auto nz = pmb->block_size.nx(X3DIR);
+  
+  // Get interior bounds
+  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::inner_x2);
+  IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::inner_x2);
+  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::inner_x2);
+  
+  // Get global indices for this block
+  const auto loc = pmb->pmy_mesh->Forest().GetLegacyTreeLocation(pmb->loc);
+  const int loc1 = loc.lx1();
+  const int loc2 = loc.lx2();
+  const int loc3 = loc.lx3();
+  
+  if (loc1 < 0 || loc2 < 0 || loc3 < 0) {
+    printf("Invalid block location\n");
+    return;
+  }
+
+  // Copy conversion units
+  const auto d_cgs_factor_ = d_cgs_factor;
+  const auto m_cgs_factor_ = m_cgs_factor;
+  const auto e_cgs_factor_ = e_cgs_factor;
+  
+  // Read data from file
+  const int fields = 3;
+
+  std::string varname = "boundary";
+  adios2::ADIOS adios(MPI_COMM_WORLD);
+
+  adios2::IO get_var = adios.DeclareIO("GetVar");
+  adios2::Engine bpReader = get_var.Open(bc_filename_inner, adios2::Mode::Read);
+  bpReader.BeginStep();
+  adios2::Variable<double> myvar_in = get_var.InquireVariable<double>(varname);
+  PARTHENON_REQUIRE_THROWS(myvar_in, "Could not find variable name in file.");
+  std::vector<double> BCinner(fields * nx * nghosts * nz);
+  
+  const adios2::Dims start{static_cast<unsigned long>(loc3),
+                           static_cast<unsigned long>(loc2),
+                           static_cast<unsigned long>(loc1),
+                           0, 0, 0, 0};
+  const adios2::Dims counts{1, 1, 1,
+                            static_cast<unsigned long>(fields),
+                            static_cast<unsigned long>(nz),
+                            static_cast<unsigned long>(nghosts),
+                            static_cast<unsigned long>(nx)};
+  
+  myvar_in.SetSelection({start, counts});
+  bpReader.Get(myvar_in, BCinner.data(), adios2::Mode::Sync);
+  
+  // Copy to device
+  auto BCinner_host = Kokkos::View<double*, Kokkos::HostSpace, Kokkos::MemoryUnmanaged>(
+      BCinner.data(), BCinner.size());
+  auto BCinner_dev = Kokkos::create_mirror_view_and_copy(parthenon::DevMemSpace(), BCinner_host);
+  
+  pmb->par_for_bndry(
+    "ReadBCX2Inner", nb, IndexDomain::inner_x2, parthenon::TopologicalElement::CC,
+    coarse, fine, KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+
+      int j_rel = j;
+
+      int idx0 = ((0 * nz + k) * nghosts + j_rel) * nx + i;
+      int idx1 = ((1 * nz + k) * nghosts + j_rel) * nx + i;
+      int idx2 = ((2 * nz + k) * nghosts + j_rel) * nx + i;
+
+      cons_pack(IDN, k, j, i) = BCinner_dev(idx0) * d_cgs_factor_;
+      cons_pack(IM2, k, j, i) = BCinner_dev(idx1) * m_cgs_factor_;
+      cons_pack(IEN, k, j, i) = BCinner_dev(idx2) * e_cgs_factor_;
+    });
+}
+
+
+void ReadBCX2Outer(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
+  
+  const auto nghosts = n_ghosts;
+  const auto nb = IndexRange{0, 0};
+  const bool fine = false;
+  
+  // Get block dimensions
+  const auto nx = pmb->block_size.nx(X1DIR);
+  const auto ny = pmb->block_size.nx(X2DIR);
+  const auto nz = pmb->block_size.nx(X3DIR);
+  
+  // Get interior bounds (use interior domain for mapping)
+  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::inner_x2);
+  IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::inner_x2);
+  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::inner_x2);
+
+  IndexRange jb_in = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  
+  // Get global indices for this block
+  const auto loc = pmb->pmy_mesh->Forest().GetLegacyTreeLocation(pmb->loc);
+  const int loc1 = loc.lx1();
+  const int loc2 = loc.lx2();
+  const int loc3 = loc.lx3();
+  
+  if (loc1 < 0 || loc2 < 0 || loc3 < 0) {
+    std::cerr << "Invalid block location\n";
+    return;
+  }
+
+  // Copy conversion units
+  const auto d_cgs_factor_ = d_cgs_factor;
+  const auto m_cgs_factor_ = m_cgs_factor;  
+  const auto e_cgs_factor_ = e_cgs_factor;
+  
+  // Read data from file
+  const int fields = 3;
+
+  std::string varname = "boundary";
+  adios2::ADIOS adios(MPI_COMM_WORLD);
+
+
+  adios2::IO get_var = adios.DeclareIO("GetVar");
+  adios2::Engine bpReader = get_var.Open(bc_filename_outer, adios2::Mode::Read);
+  bpReader.BeginStep();
+  adios2::Variable<double> myvar_in = get_var.InquireVariable<double>(varname);
+  PARTHENON_REQUIRE_THROWS(myvar_in, "Could not find variable name in file.");
+  std::vector<double> BCouter(fields * nx * nghosts * nz);
+  
+  const adios2::Dims start{static_cast<unsigned long>(loc3),
+                           static_cast<unsigned long>(loc2),
+                           static_cast<unsigned long>(loc1),
+                           0, 0, 0, 0};
+  const adios2::Dims counts{1, 1, 1,
+                            static_cast<unsigned long>(fields),
+                            static_cast<unsigned long>(nz),
+                            static_cast<unsigned long>(nghosts),
+                            static_cast<unsigned long>(nx)};
+  
+  myvar_in.SetSelection({start, counts});
+  bpReader.Get(myvar_in, BCouter.data(), adios2::Mode::Sync);
+  
+  // Create an unmanaged host view over the std::vector memory, then copy to device
+  auto BCouter_host = Kokkos::View<double*, Kokkos::HostSpace, Kokkos::MemoryUnmanaged>(
+      BCouter.data(), BCouter.size());
+  auto BCouter_dev = Kokkos::create_mirror_view_and_copy(parthenon::DevMemSpace(), BCouter_host);
+  
+  // Apply boundary conditions on the outer x2 boundary
+  pmb->par_for_bndry(
+    "ReadBCX2Outer", nb, IndexDomain::outer_x2, parthenon::TopologicalElement::CC,
+    coarse, fine, KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+
+      int j_rel = j - jb_in.e + 1;  // 0 = first ghost just outside interior
+
+
+      int idx0 = ((0 * nz + k) * nghosts + j_rel) * nx + i;
+      int idx1 = ((1 * nz + k) * nghosts + j_rel) * nx + i;
+      int idx2 = ((2 * nz + k) * nghosts + j_rel) * nx + i;
+
+      // Apply the same unit conversions used in ProblemGenerator()
+      cons_pack(IDN, k, j, i) = BCouter_dev(idx0) * d_cgs_factor_;
+      cons_pack(IM2, k, j, i) = BCouter_dev(idx1) * m_cgs_factor_;
+      cons_pack(IEN, k, j, i) = BCouter_dev(idx2) * e_cgs_factor_;
+    });
+}
+
+
+
+void StaticBCX2Inner(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
+  auto prim_pack = mbd->PackVariables(std::vector<std::string>{"prim"});
+  auto gamma = hydro_pkg->Param<Real>("gamma");
+  const auto gm1 = (gamma - 1.0);
+
+  const int j_in_e = pmb->cellbounds.GetBoundsJ(IndexDomain::interior).e;
+  const int j_in_s = pmb->cellbounds.GetBoundsJ(IndexDomain::interior).s;
+
+  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
+  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
+
+  const auto nx = pmb->block_size.nx(X1DIR);
+  const auto nz = pmb->block_size.nx(X3DIR);
+  int Nfit = std::max(6, j_in_e - j_in_s + 1);
+  const auto c_s_ = c_s;
+  const int ng = n_ghosts;
+
+  // DEBUG: Print host-side info
+  std::cout << "=== StaticBCX2Inner DEBUG ===" << std::endl;
+  std::cout << "j_in_s = " << j_in_s << ", j_in_e = " << j_in_e << std::endl;
+  std::cout << "kb: [" << kb.s << ", " << kb.e << "], ib: [" << ib.s << ", " << ib.e << "]" << std::endl;
+  std::cout << "Nfit = " << Nfit << ", ng = " << ng << std::endl;
+  std::cout << "Ghost cell range: j = [" << (j_in_s - ng) << ", " << (j_in_s - 1) << "]" << std::endl;
+  std::cout << "Fit cell range: j = [" << j_in_s << ", " << (j_in_s + Nfit - 1) << "]" << std::endl;
+
+  // Create views to capture debug data from device
+  int nthreads = (kb.e - kb.s + 1) * (ib.e - ib.s + 1);
+  Kokkos::View<Real*> debug_rho0("debug_rho0", nthreads);
+  Kokkos::View<Real*> debug_alpha("debug_alpha", nthreads);
+  Kokkos::View<int*> debug_used("debug_used", nthreads);
+  
+  // Capture ALL ghost cell densities for first thread
+  Kokkos::View<Real*> debug_ghost_densities("debug_ghost_densities", ng);
+  Kokkos::View<int*> debug_ghost_indices("debug_ghost_indices", ng);
+
+  // Parallel fit over blocks,k,i and fill inner ghost cells
+  Kokkos::parallel_for(
+      "InnerFitAndFillGhosts",
+      Kokkos::MDRangePolicy<Kokkos::Rank<2>>({kb.s, ib.s}, {kb.e+1, ib.e+1}),
+      KOKKOS_LAMBDA(const int &k, const int &i) {
+        auto &consb = cons_pack;
+        auto &primb = prim_pack;
+        const auto &coordsb = cons_pack.GetCoords();
+
+        const int idx = (k - kb.s) * (ib.e - ib.s + 1) + (i - ib.s);
+        const bool first_thread = (k == kb.s && i == ib.s);
+
+        // linear regression sums for ln(rho) = ln(rho0) - alpha*y
+        Real Sx = 0.0, Sy = 0.0, Sxx = 0.0, Sxy = 0.0;
+        int used = 0;
+        
+        for (int m = 0; m < Nfit; ++m) {
+          int jcell = j_in_s + m;
+          Real y = coordsb.Xc<X2DIR>(jcell);
+          Real rho_val = consb(IDN, k, jcell, i);
+          
+          if (rho_val <= 0.0) continue;
+          
+          Real ln_rho = log(rho_val);
+          Sx += y;
+          Sy += ln_rho;
+          Sxx += y * y;
+          Sxy += y * ln_rho;
+          ++used;
+        }
+
+        debug_used(idx) = used;
+
+        Real rho0 = (Real)1e-30;
+        Real alpha = 0.0;
+        if (used >= 2) {
+          Real denom = used * Sxx - Sx * Sx;
+          if (fabs(denom) > 1e-30) {
+            Real slope = (used * Sxy - Sx * Sy) / denom;
+            Real intercept = (Sy - slope * Sx) / used;
+            alpha = -slope;
+            rho0 = exp(intercept);
+          } else {
+            rho0 = exp(Sy / used);
+          }
+        } else if (used == 1) {
+          rho0 = exp(Sy);
+        }
+        
+        debug_rho0(idx) = rho0;
+        debug_alpha(idx) = alpha;
+
+        // fill inner ghost cells
+        for (int nyg = 1; nyg <= ng; ++nyg) {
+          int jghost = j_in_s - nyg;
+          Real yghost = coordsb.Xc<X2DIR>(jghost);
+          Real rho_bc = rho0 * exp(-alpha * yghost);
+          if (rho_bc <= (Real)1e-30) rho_bc = (Real)1e-30;
+
+          // use velocity from nearest interior cell
+          Real vx_interior = primb(IV2, k, j_in_s, i);
+          // If there's inflow into the grid, set the normal velocity to zero
+          if (vx_interior >= 0.0) {
+            primb(IV2, k, jghost, i) = 0.0;
+          } else {
+            primb(IV2, k, jghost, i) = 0.0;
+          }
+
+          primb(IDN, k, jghost, i) = rho_bc;
+          primb(IPR, k, jghost, i) = rho_bc * c_s_ * c_s_ ;
+          
+          // Capture ghost cell data for first thread
+          if (first_thread) {
+            debug_ghost_densities(nyg - 1) = rho_bc;
+            debug_ghost_indices(nyg - 1) = jghost;
+          }
+        }
+      });
+  
+  Kokkos::fence();
+
+  // Copy to host and print
+  auto h_rho0 = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_rho0);
+  auto h_alpha = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_alpha);
+  auto h_used = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_used);
+  auto h_ghost_densities = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_ghost_densities);
+  auto h_ghost_indices = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_ghost_indices);
+
+  std::cout << "Inner BC Results (first few threads):" << std::endl;
+  int nprint = std::min(5, nthreads);
+  for (int n = 0; n < nprint; ++n) {
+    int k = kb.s + n / (ib.e - ib.s + 1);
+    int i = ib.s + n % (ib.e - ib.s + 1);
+    std::cout << "  (k=" << k << ", i=" << i << "): "
+              << "used=" << h_used(n) 
+              << ", rho0=" << h_rho0(n) 
+              << ", alpha=" << h_alpha(n) << std::endl;
+  }
+  
+  std::cout << "\nGhost cell densities assigned (for k=" << kb.s << ", i=" << ib.s << "):" << std::endl;
+  for (int nyg = 0; nyg < ng; ++nyg) {
+    std::cout << "  j=" << h_ghost_indices(nyg) 
+              << ": rho = " << h_ghost_densities(nyg) << std::endl;
+  }
+  
+  std::cout << "=== End Inner BC ===" << std::endl << std::endl;
+}
+
+void StaticBCX2Outer(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
+  auto prim_pack = mbd->PackVariables(std::vector<std::string>{"prim"});
+  auto gamma = hydro_pkg->Param<Real>("gamma");
+  const auto gm1 = (gamma - 1.0);
+
+  const int j_in_e = pmb->cellbounds.GetBoundsJ(IndexDomain::interior).e;
+  const int j_in_s = pmb->cellbounds.GetBoundsJ(IndexDomain::interior).s;
+
+  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
+  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
+
+  const auto nx = pmb->block_size.nx(X1DIR);
+  const auto nz = pmb->block_size.nx(X3DIR);
+  int Nfit = std::max(6, j_in_e - j_in_s + 1);
+  const auto c_s_ = c_s;
+  const int ng = n_ghosts;
+
+  std::cout << "=== StaticBCX2Outer DEBUG ===" << std::endl;
+  std::cout << "j_in_s = " << j_in_s << ", j_in_e = " << j_in_e << std::endl;
+  std::cout << "Ghost cell range: j = [" << (j_in_e + 1) << ", " << (j_in_e + ng) << "]" << std::endl;
+  std::cout << "Fit cell range: j = [" << (j_in_e - Nfit + 1) << ", " << j_in_e << "]" << std::endl;
+
+  int nthreads = (kb.e - kb.s + 1) * (ib.e - ib.s + 1);
+  Kokkos::View<Real*> debug_rho0("debug_rho0", nthreads);
+  Kokkos::View<Real*> debug_alpha("debug_alpha", nthreads);
+  Kokkos::View<int*> debug_used("debug_used", nthreads);
+  Kokkos::View<Real*> debug_ghost_densities("debug_ghost_densities", ng);
+  Kokkos::View<int*> debug_ghost_indices("debug_ghost_indices", ng);
+
+  Kokkos::parallel_for(
+      "OuterFitAndFillGhosts",
+      Kokkos::MDRangePolicy<Kokkos::Rank<2>>({kb.s, ib.s}, {kb.e+1, ib.e+1}),
+      KOKKOS_LAMBDA(const int &k, const int &i) {
+        auto &consb = cons_pack;
+        auto &primb = prim_pack;
+        const auto &coordsb = cons_pack.GetCoords();
+
+        const int idx = (k - kb.s) * (ib.e - ib.s + 1) + (i - ib.s);
+        const bool first_thread = (k == kb.s && i == ib.s);
+
+        Real Sx = 0.0, Sy = 0.0, Sxx = 0.0, Sxy = 0.0;
+        int used = 0;
+        
+        for (int m = 0; m < Nfit; ++m) {
+          int jcell = j_in_e - m;
+          Real y = coordsb.Xc<X2DIR>(jcell);
+          Real rho_val = consb(IDN, k, jcell, i);
+          
+          if (rho_val <= 0.0) continue;
+          
+          Real ln_rho = log(rho_val);
+          Sx += y;
+          Sy += ln_rho;
+          Sxx += y * y;
+          Sxy += y * ln_rho;
+          ++used;
+        }
+
+        debug_used(idx) = used;
+
+        Real rho0 = (Real)1e-30;
+        Real alpha = 0.0;
+        if (used >= 2) {
+          Real denom = used * Sxx - Sx * Sx;
+          if (fabs(denom) > 1e-30) {
+            Real slope = (used * Sxy - Sx * Sy) / denom;
+            Real intercept = (Sy - slope * Sx) / used;
+            alpha = -slope;
+            rho0 = exp(intercept);
+          } else {
+            rho0 = exp(Sy / used);
+          }
+        } else if (used == 1) {
+          rho0 = exp(Sy);
+        }
+        
+        debug_rho0(idx) = rho0;
+        debug_alpha(idx) = alpha;
+
+        for (int nyg = 1; nyg <= ng; ++nyg) {
+          int jghost = nyg + j_in_e;
+          Real yghost = coordsb.Xc<X2DIR>(jghost);
+          Real rho_bc = rho0 * exp(-alpha * yghost);
+          if (rho_bc <= (Real)1e-30) rho_bc = (Real)1e-30;
+
+          // use velocity from nearest interior cell
+          Real vx_interior = primb(IV2, k, j_in_e, i);
+          // If there's inflow into the grid, set the normal velocity to zero
+          if (vx_interior <= 0.0) {
+            primb(IV2, k, jghost, i) = 0.0;
+          } else {
+            primb(IV2, k, jghost, i) = 0.0;
+          }
+
+          primb(IDN, k, jghost, i) = rho_bc;
+          primb(IPR, k, jghost, i) = rho_bc * c_s_ * c_s_ ;
+          
+          if (first_thread) {
+            debug_ghost_densities(nyg - 1) = rho_bc;
+            debug_ghost_indices(nyg - 1) = jghost;
+          }
+        }
+      });
+  
+  Kokkos::fence();
+
+  auto h_rho0 = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_rho0);
+  auto h_alpha = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_alpha);
+  auto h_used = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_used);
+  auto h_ghost_densities = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_ghost_densities);
+  auto h_ghost_indices = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_ghost_indices);
+
+  std::cout << "Outer BC Results (first few threads):" << std::endl;
+  int nprint = std::min(5, nthreads);
+  for (int n = 0; n < nprint; ++n) {
+    int k = kb.s + n / (ib.e - ib.s + 1);
+    int i = ib.s + n % (ib.e - ib.s + 1);
+    std::cout << "  (k=" << k << ", i=" << i << "): "
+              << "used=" << h_used(n) 
+              << ", rho0=" << h_rho0(n) 
+              << ", alpha=" << h_alpha(n) << std::endl;
+  }
+  
+  std::cout << "\nGhost cell densities assigned (for k=" << kb.s << ", i=" << ib.s << "):" << std::endl;
+  for (int nyg = 0; nyg < ng; ++nyg) {
+    std::cout << "  j=" << h_ghost_indices(nyg) 
+              << ": rho = " << h_ghost_densities(nyg) << std::endl;
+  }
+  
+  std::cout << "=== End Outer BC ===" << std::endl << std::endl;
+}
 
 //----------------------------------------------------------------------------------------
 //! \fn void StratHst(MeshData<Real> *md)
