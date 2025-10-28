@@ -58,6 +58,8 @@ using parthenon::ParArray2D;
 using utils::few_modes_ft::Complex;
 using utils::few_modes_ft::FewModesFT;
 
+Real c_s, gm1;
+
 void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
                                const parthenon::Real beta_dt) {
   using parthenon::IndexDomain;
@@ -111,7 +113,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   Units units(pin);
 
   auto gamma = pin->GetReal("hydro", "gamma");
-  auto gm1 = (gamma - 1.0);
+  gm1 = (gamma - 1.0);
   const auto &pkg = mesh->packages.Get("Hydro");
   const auto mbar_over_kb = pkg->Param<Real>("mbar_over_kb");
 
@@ -127,7 +129,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   const auto G = units.gravitational_constant();
   const auto g0 = 2.0 * M_PI * G * surface_density; 
 
-  const auto c_s = std::sqrt(T_base / mbar_over_kb); 
+  c_s = std::sqrt(T_base / mbar_over_kb); 
   const auto H_height = c_s * c_s / g0;              
 
   pkg->AddParam<Real>("H_height", H_height);

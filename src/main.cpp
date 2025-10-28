@@ -95,10 +95,6 @@ int main(int argc, char *argv[]) {
     pman.app_input->InitMeshBlockUserData = stratified_box::SetPhases;
     pman.app_input->MeshBlockUserWorkBeforeOutput = stratified_box::UserWorkBeforeOutput;
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
-                                              "ReadBCX2Inner", stratified_box::ReadBCX2Inner);
-    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
-                                              "ReadBCX2Outer", stratified_box::ReadBCX2Outer);
-    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
                                               "StaticBCX2Inner", stratified_box::StaticBCX2Inner);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
                                               "StaticBCX2Outer", stratified_box::StaticBCX2Outer);

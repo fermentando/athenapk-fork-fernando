@@ -62,7 +62,6 @@ using utils::few_modes_ft::FewModesFT;
 bool drive_turbulence;
 Real d_cgs_factor, m_cgs_factor, e_cgs_factor;
 Real c_s;
-std::string bc_filename_inner, bc_filename_outer;
 int n_ghosts;
 
 
@@ -187,8 +186,6 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   Units units(pin);
 
   const std::string ics_filename = pin->GetString("job", "bin_input_file");
-  bc_filename_inner = pin->GetString("job", "bc_input_file_inner");
-  bc_filename_outer = pin->GetString("job", "bc_input_file_outer");
   std::string varname = ics_filename;
   size_t pos = varname.find(".bp");
 
@@ -450,181 +447,6 @@ void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
       });
 }
 
-
-
-
-
-
-void ReadBCX2Inner(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
-  auto pmb = mbd->GetBlockPointer();
-  auto hydro_pkg = pmb->packages.Get("Hydro");
-  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
-  
-  const auto nghosts = n_ghosts;
-  const auto nb = IndexRange{0, 0};
-  const bool fine = false;
-  
-  // Get block dimensions
-  const auto nx = pmb->block_size.nx(X1DIR);
-  const auto ny = pmb->block_size.nx(X2DIR);
-  const auto nz = pmb->block_size.nx(X3DIR);
-  
-  // Get interior bounds
-  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::inner_x2);
-  IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::inner_x2);
-  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::inner_x2);
-  
-  // Get global indices for this block
-  const auto loc = pmb->pmy_mesh->Forest().GetLegacyTreeLocation(pmb->loc);
-  const int loc1 = loc.lx1();
-  const int loc2 = loc.lx2();
-  const int loc3 = loc.lx3();
-  
-  if (loc1 < 0 || loc2 < 0 || loc3 < 0) {
-    printf("Invalid block location\n");
-    return;
-  }
-
-  // Copy conversion units
-  const auto d_cgs_factor_ = d_cgs_factor;
-  const auto m_cgs_factor_ = m_cgs_factor;
-  const auto e_cgs_factor_ = e_cgs_factor;
-  
-  // Read data from file
-  const int fields = 3;
-
-  std::string varname = "boundary";
-  adios2::ADIOS adios(MPI_COMM_WORLD);
-
-  adios2::IO get_var = adios.DeclareIO("GetVar");
-  adios2::Engine bpReader = get_var.Open(bc_filename_inner, adios2::Mode::Read);
-  bpReader.BeginStep();
-  adios2::Variable<double> myvar_in = get_var.InquireVariable<double>(varname);
-  PARTHENON_REQUIRE_THROWS(myvar_in, "Could not find variable name in file.");
-  std::vector<double> BCinner(fields * nx * nghosts * nz);
-  
-  const adios2::Dims start{static_cast<unsigned long>(loc3),
-                           static_cast<unsigned long>(loc2),
-                           static_cast<unsigned long>(loc1),
-                           0, 0, 0, 0};
-  const adios2::Dims counts{1, 1, 1,
-                            static_cast<unsigned long>(fields),
-                            static_cast<unsigned long>(nz),
-                            static_cast<unsigned long>(nghosts),
-                            static_cast<unsigned long>(nx)};
-  
-  myvar_in.SetSelection({start, counts});
-  bpReader.Get(myvar_in, BCinner.data(), adios2::Mode::Sync);
-  
-  // Copy to device
-  auto BCinner_host = Kokkos::View<double*, Kokkos::HostSpace, Kokkos::MemoryUnmanaged>(
-      BCinner.data(), BCinner.size());
-  auto BCinner_dev = Kokkos::create_mirror_view_and_copy(parthenon::DevMemSpace(), BCinner_host);
-  
-  pmb->par_for_bndry(
-    "ReadBCX2Inner", nb, IndexDomain::inner_x2, parthenon::TopologicalElement::CC,
-    coarse, fine, KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
-
-      int j_rel = j;
-
-      int idx0 = ((0 * nz + k) * nghosts + j_rel) * nx + i;
-      int idx1 = ((1 * nz + k) * nghosts + j_rel) * nx + i;
-      int idx2 = ((2 * nz + k) * nghosts + j_rel) * nx + i;
-
-      cons_pack(IDN, k, j, i) = BCinner_dev(idx0) * d_cgs_factor_;
-      cons_pack(IM2, k, j, i) = BCinner_dev(idx1) * m_cgs_factor_;
-      cons_pack(IEN, k, j, i) = BCinner_dev(idx2) * e_cgs_factor_;
-    });
-}
-
-
-void ReadBCX2Outer(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
-  auto pmb = mbd->GetBlockPointer();
-  auto hydro_pkg = pmb->packages.Get("Hydro");
-  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
-  
-  const auto nghosts = n_ghosts;
-  const auto nb = IndexRange{0, 0};
-  const bool fine = false;
-  
-  // Get block dimensions
-  const auto nx = pmb->block_size.nx(X1DIR);
-  const auto ny = pmb->block_size.nx(X2DIR);
-  const auto nz = pmb->block_size.nx(X3DIR);
-  
-  // Get interior bounds (use interior domain for mapping)
-  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::inner_x2);
-  IndexRange jb = pmb->cellbounds.GetBoundsJ(IndexDomain::inner_x2);
-  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::inner_x2);
-
-  IndexRange jb_in = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
-  
-  // Get global indices for this block
-  const auto loc = pmb->pmy_mesh->Forest().GetLegacyTreeLocation(pmb->loc);
-  const int loc1 = loc.lx1();
-  const int loc2 = loc.lx2();
-  const int loc3 = loc.lx3();
-  
-  if (loc1 < 0 || loc2 < 0 || loc3 < 0) {
-    std::cerr << "Invalid block location\n";
-    return;
-  }
-
-  // Copy conversion units
-  const auto d_cgs_factor_ = d_cgs_factor;
-  const auto m_cgs_factor_ = m_cgs_factor;  
-  const auto e_cgs_factor_ = e_cgs_factor;
-  
-  // Read data from file
-  const int fields = 3;
-
-  std::string varname = "boundary";
-  adios2::ADIOS adios(MPI_COMM_WORLD);
-
-
-  adios2::IO get_var = adios.DeclareIO("GetVar");
-  adios2::Engine bpReader = get_var.Open(bc_filename_outer, adios2::Mode::Read);
-  bpReader.BeginStep();
-  adios2::Variable<double> myvar_in = get_var.InquireVariable<double>(varname);
-  PARTHENON_REQUIRE_THROWS(myvar_in, "Could not find variable name in file.");
-  std::vector<double> BCouter(fields * nx * nghosts * nz);
-  
-  const adios2::Dims start{static_cast<unsigned long>(loc3),
-                           static_cast<unsigned long>(loc2),
-                           static_cast<unsigned long>(loc1),
-                           0, 0, 0, 0};
-  const adios2::Dims counts{1, 1, 1,
-                            static_cast<unsigned long>(fields),
-                            static_cast<unsigned long>(nz),
-                            static_cast<unsigned long>(nghosts),
-                            static_cast<unsigned long>(nx)};
-  
-  myvar_in.SetSelection({start, counts});
-  bpReader.Get(myvar_in, BCouter.data(), adios2::Mode::Sync);
-  
-  // Create an unmanaged host view over the std::vector memory, then copy to device
-  auto BCouter_host = Kokkos::View<double*, Kokkos::HostSpace, Kokkos::MemoryUnmanaged>(
-      BCouter.data(), BCouter.size());
-  auto BCouter_dev = Kokkos::create_mirror_view_and_copy(parthenon::DevMemSpace(), BCouter_host);
-  
-  // Apply boundary conditions on the outer x2 boundary
-  pmb->par_for_bndry(
-    "ReadBCX2Outer", nb, IndexDomain::outer_x2, parthenon::TopologicalElement::CC,
-    coarse, fine, KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
-
-      int j_rel = j - jb_in.e + 1;  // 0 = first ghost just outside interior
-
-
-      int idx0 = ((0 * nz + k) * nghosts + j_rel) * nx + i;
-      int idx1 = ((1 * nz + k) * nghosts + j_rel) * nx + i;
-      int idx2 = ((2 * nz + k) * nghosts + j_rel) * nx + i;
-
-      // Apply the same unit conversions used in ProblemGenerator()
-      cons_pack(IDN, k, j, i) = BCouter_dev(idx0) * d_cgs_factor_;
-      cons_pack(IM2, k, j, i) = BCouter_dev(idx1) * m_cgs_factor_;
-      cons_pack(IEN, k, j, i) = BCouter_dev(idx2) * e_cgs_factor_;
-    });
-}
 
 
 
