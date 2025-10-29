@@ -207,7 +207,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   const auto nz = pmesh->GetDefaultBlockSize().nx(parthenon::X3DIR);
 
   
-  const int fields = 3;
+  const int fields = 5;
 
 
   std::vector<double> ICsdata(fields * nx * ny * nz);
@@ -285,11 +285,15 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
           int index_base_0 = ((0 * nz + k) * ny + j) * nx + i;
           int index_base_1 = ((1 * nz + k) * ny + j) * nx + i;
           int index_base_2 = ((2 * nz + k) * ny + j) * nx + i;
+          int index_base_3 = ((3 * nz + k) * ny + j) * nx + i;
+          int index_base_4 = ((4 * nz + k) * ny + j) * nx + i;
 
           PARTHENON_REQUIRE_THROWS(ICsdata[index_base_0] > 0., "Densities below 0");
 
           u(IDN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_0] * d_cgs_factor;
+          u(IM1, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
           u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
+          u(IM3, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
           u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * e_cgs_factor;
 
 
