@@ -292,9 +292,9 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
           u(IDN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_0] * d_cgs_factor;
           u(IM1, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
-          u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
-          u(IM3, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
-          u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * e_cgs_factor;
+          u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * m_cgs_factor;
+          u(IM3, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_3] * m_cgs_factor;
+          u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_4] * e_cgs_factor;
 
 
         }
@@ -451,289 +451,108 @@ void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
       });
 }
 
+void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto pkg = pmb->packages.Get("Hydro");
 
+  const auto inject_once_at_time = pkg->Param<Real>("turbulence/inject_once_at_time");
+  const auto inject_once_at_cycle = pkg->Param<int>("turbulence/inject_once_at_cycle");
+  const auto inject_once_on_restart =
+      pkg->Param<bool>("turbulence/inject_once_on_restart");
 
-
-void StaticBCX2Inner(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
-  auto pmb = mbd->GetBlockPointer();
-  auto hydro_pkg = pmb->packages.Get("Hydro");
-  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
-  auto prim_pack = mbd->PackVariables(std::vector<std::string>{"prim"});
-  auto gamma = hydro_pkg->Param<Real>("gamma");
-  const auto gm1 = (gamma - 1.0);
-
-  const int j_in_e = pmb->cellbounds.GetBoundsJ(IndexDomain::interior).e;
-  const int j_in_s = pmb->cellbounds.GetBoundsJ(IndexDomain::interior).s;
-
-  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
-  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
-
-  const auto nx = pmb->block_size.nx(X1DIR);
-  const auto nz = pmb->block_size.nx(X3DIR);
-  int Nfit = std::max(6, j_in_e - j_in_s + 1);
-  const auto c_s_ = c_s;
-  const int ng = n_ghosts;
-
-  // DEBUG: Print host-side info
-  std::cout << "=== StaticBCX2Inner DEBUG ===" << std::endl;
-  std::cout << "j_in_s = " << j_in_s << ", j_in_e = " << j_in_e << std::endl;
-  std::cout << "kb: [" << kb.s << ", " << kb.e << "], ib: [" << ib.s << ", " << ib.e << "]" << std::endl;
-  std::cout << "Nfit = " << Nfit << ", ng = " << ng << std::endl;
-  std::cout << "Ghost cell range: j = [" << (j_in_s - ng) << ", " << (j_in_s - 1) << "]" << std::endl;
-  std::cout << "Fit cell range: j = [" << j_in_s << ", " << (j_in_s + Nfit - 1) << "]" << std::endl;
-
-  // Create views to capture debug data from device
-  int nthreads = (kb.e - kb.s + 1) * (ib.e - ib.s + 1);
-  Kokkos::View<Real*> debug_rho0("debug_rho0", nthreads);
-  Kokkos::View<Real*> debug_alpha("debug_alpha", nthreads);
-  Kokkos::View<int*> debug_used("debug_used", nthreads);
-  
-  // Capture ALL ghost cell densities for first thread
-  Kokkos::View<Real*> debug_ghost_densities("debug_ghost_densities", ng);
-  Kokkos::View<int*> debug_ghost_indices("debug_ghost_indices", ng);
-
-  // Parallel fit over blocks,k,i and fill inner ghost cells
-  Kokkos::parallel_for(
-      "InnerFitAndFillGhosts",
-      Kokkos::MDRangePolicy<Kokkos::Rank<2>>({kb.s, ib.s}, {kb.e+1, ib.e+1}),
-      KOKKOS_LAMBDA(const int &k, const int &i) {
-        auto &consb = cons_pack;
-        auto &primb = prim_pack;
-        const auto &coordsb = cons_pack.GetCoords();
-
-        const int idx = (k - kb.s) * (ib.e - ib.s + 1) + (i - ib.s);
-        const bool first_thread = (k == kb.s && i == ib.s);
-
-        // linear regression sums for ln(rho) = ln(rho0) - alpha*y
-        Real Sx = 0.0, Sy = 0.0, Sxx = 0.0, Sxy = 0.0;
-        int used = 0;
-        
-        for (int m = 0; m < Nfit; ++m) {
-          int jcell = j_in_s + m;
-          Real y = coordsb.Xc<X2DIR>(jcell);
-          Real rho_val = consb(IDN, k, jcell, i);
-          
-          if (rho_val <= 0.0) continue;
-          
-          Real ln_rho = log(rho_val);
-          Sx += y;
-          Sy += ln_rho;
-          Sxx += y * y;
-          Sxy += y * ln_rho;
-          ++used;
-        }
-
-        debug_used(idx) = used;
-
-        Real rho0 = (Real)1e-30;
-        Real alpha = 0.0;
-        if (used >= 2) {
-          Real denom = used * Sxx - Sx * Sx;
-          if (fabs(denom) > 1e-30) {
-            Real slope = (used * Sxy - Sx * Sy) / denom;
-            Real intercept = (Sy - slope * Sx) / used;
-            alpha = -slope;
-            rho0 = exp(intercept);
-          } else {
-            rho0 = exp(Sy / used);
-          }
-        } else if (used == 1) {
-          rho0 = exp(Sy);
-        }
-        
-        debug_rho0(idx) = rho0;
-        debug_alpha(idx) = alpha;
-
-        // fill inner ghost cells
-        for (int nyg = 1; nyg <= ng; ++nyg) {
-          int jghost = j_in_s - nyg;
-          Real yghost = coordsb.Xc<X2DIR>(jghost);
-          Real rho_bc = rho0 * exp(-alpha * yghost);
-          if (rho_bc <= (Real)1e-30) rho_bc = (Real)1e-30;
-
-          // use velocity from nearest interior cell
-          Real vx_interior = primb(IV2, k, j_in_s, i);
-          // If there's inflow into the grid, set the normal velocity to zero
-          if (vx_interior >= 0.0) {
-            primb(IV2, k, jghost, i) = 0.0;
-          } else {
-            primb(IV2, k, jghost, i) = 0.0;
-          }
-
-          primb(IDN, k, jghost, i) = rho_bc;
-          primb(IPR, k, jghost, i) = rho_bc * c_s_ * c_s_ ;
-          
-          // Capture ghost cell data for first thread
-          if (first_thread) {
-            debug_ghost_densities(nyg - 1) = rho_bc;
-            debug_ghost_indices(nyg - 1) = jghost;
-          }
-        }
-      });
-  
-  Kokkos::fence();
-
-  // Copy to host and print
-  auto h_rho0 = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_rho0);
-  auto h_alpha = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_alpha);
-  auto h_used = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_used);
-  auto h_ghost_densities = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_ghost_densities);
-  auto h_ghost_indices = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_ghost_indices);
-
-  std::cout << "Inner BC Results (first few threads):" << std::endl;
-  int nprint = std::min(5, nthreads);
-  for (int n = 0; n < nprint; ++n) {
-    int k = kb.s + n / (ib.e - ib.s + 1);
-    int i = ib.s + n % (ib.e - ib.s + 1);
-    std::cout << "  (k=" << k << ", i=" << i << "): "
-              << "used=" << h_used(n) 
-              << ", rho0=" << h_rho0(n) 
-              << ", alpha=" << h_alpha(n) << std::endl;
+  // Check if any condition is met for injecting
+  if (!((inject_once_at_time >= tm.time && inject_once_at_time < tm.time + dt) ||
+        (inject_once_at_cycle == tm.ncycle) || inject_once_on_restart)) {
+    return;
   }
-  
-  std::cout << "\nGhost cell densities assigned (for k=" << kb.s << ", i=" << ib.s << "):" << std::endl;
-  for (int nyg = 0; nyg < ng; ++nyg) {
-    std::cout << "  j=" << h_ghost_indices(nyg) 
-              << ": rho = " << h_ghost_densities(nyg) << std::endl;
+
+  // Always disable injecting as the original value doesn't matter
+  pkg->UpdateParam("turbulence/inject_once_at_time", -1.0);
+  pkg->UpdateParam("turbulence/inject_once_at_cycle", -1);
+  pkg->UpdateParam("turbulence/inject_once_on_restart", false);
+
+  const auto radius =
+      pkg->Param<Real>("stratified_box/r_cloud_inserted");
+  const auto chi =
+      pkg->Param<Real>("stratified_box/chi_cloud_inserted");
+  const auto loc = pkg->Param<std::vector<Real>>("stratified_box/loc_cloud_inserted");
+
+  // redef vars for easier capture (std::vector does not work)
+  const auto loc_x = loc[0];
+  const auto loc_y = loc[1];
+  const auto loc_z = loc[2];
+  if (parthenon::Globals::my_rank == 0) {
+    std::stringstream msg;
+    msg << std::setprecision(2);
+    msg << "\n# Turbulence driver: injecting cloud";
+    msg << " at location " << loc_x << " " << loc_y << " " << loc_z
+        << " with overdensity " << chi << ".\n\n ";
+    std::cout << msg.str();
   }
-  
-  std::cout << "=== End Inner BC ===" << std::endl << std::endl;
+
+  const auto *const error_msg =
+      "Blob bounds crossing domain bounds currently not supported.";
+  PARTHENON_REQUIRE_THROWS(loc_x + radius < pmb->pmy_mesh->mesh_size.xmax(X1DIR),
+                            error_msg)
+  PARTHENON_REQUIRE_THROWS(loc_x - radius > pmb->pmy_mesh->mesh_size.xmin(X1DIR),
+                            error_msg)
+  PARTHENON_REQUIRE_THROWS(loc_y + radius < pmb->pmy_mesh->mesh_size.xmax(X2DIR),
+                            error_msg)
+  PARTHENON_REQUIRE_THROWS(loc_y - radius > pmb->pmy_mesh->mesh_size.xmin(X2DIR),
+                            error_msg)
+  PARTHENON_REQUIRE_THROWS(loc_z + radius < pmb->pmy_mesh->mesh_size.xmax(X3DIR),
+                            error_msg)
+  PARTHENON_REQUIRE_THROWS(loc_z - radius > pmb->pmy_mesh->mesh_size.xmin(X3DIR),
+                            error_msg)
+
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+  auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+
+  const auto fluid = pkg->Param<Fluid>("fluid");
+  // To fix this, we'd just have to account for the magnetic energy in the reduction
+  PARTHENON_REQUIRE(fluid == Fluid::euler,
+                    "Injecting only supported for hydro sims at the moment.");
+
+  const auto gamma = pkg->Param<Real>("AdiabaticIndex");
+
+  pmb->par_for(
+      "turbulence: inject blob", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e,
+      ib.s, ib.e, KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
+        const auto &coords = cons_pack.GetCoords(b);
+        auto &cons = cons_pack(b);
+
+        const auto x = coords.Xc<1>(i) - loc_x;
+        const auto y = coords.Xc<2>(j) - loc_y;
+        const auto z = coords.Xc<3>(k) - loc_z;
+        const auto r = std::sqrt(SQR(x) + SQR(y) + SQR(z));
+
+        if (r < radius) {
+          const auto kin_en_density =
+              0.5 *
+              (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
+                SQR(cons(IM3, k, j, i))) /
+              cons(IDN, k, j, i);
+          auto rho_e = cons(IEN, k, j, i) - kin_en_density;
+
+          // increase density according to overdensity
+          cons(IDN, k, j, i) *= chi;
+          // adjust momentum (so that the velocity remains constant)
+          cons(IM1, k, j, i) *= chi;
+          cons(IM2, k, j, i) *= chi;
+          cons(IM3, k, j, i) *= chi;
+          // adjust total energy density (using original rho_e translates to an increase
+          // of 1/chi in temperature)
+          cons(IEN, k, j, i) = kin_en_density * chi + rho_e;
+        }
+  });
+
+  // Update cooling routine 
+  //pkg->UpdateParam("enable_cooling", Cooling::tabular);
 }
 
-void StaticBCX2Outer(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
-  auto pmb = mbd->GetBlockPointer();
-  auto hydro_pkg = pmb->packages.Get("Hydro");
-  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
-  auto prim_pack = mbd->PackVariables(std::vector<std::string>{"prim"});
-  auto gamma = hydro_pkg->Param<Real>("gamma");
-  const auto gm1 = (gamma - 1.0);
-
-  const int j_in_e = pmb->cellbounds.GetBoundsJ(IndexDomain::interior).e;
-  const int j_in_s = pmb->cellbounds.GetBoundsJ(IndexDomain::interior).s;
-
-  IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
-  IndexRange kb = pmb->cellbounds.GetBoundsK(IndexDomain::interior);
-
-  const auto nx = pmb->block_size.nx(X1DIR);
-  const auto nz = pmb->block_size.nx(X3DIR);
-  int Nfit = std::max(6, j_in_e - j_in_s + 1);
-  const auto c_s_ = c_s;
-  const int ng = n_ghosts;
-
-  std::cout << "=== StaticBCX2Outer DEBUG ===" << std::endl;
-  std::cout << "j_in_s = " << j_in_s << ", j_in_e = " << j_in_e << std::endl;
-  std::cout << "Ghost cell range: j = [" << (j_in_e + 1) << ", " << (j_in_e + ng) << "]" << std::endl;
-  std::cout << "Fit cell range: j = [" << (j_in_e - Nfit + 1) << ", " << j_in_e << "]" << std::endl;
-
-  int nthreads = (kb.e - kb.s + 1) * (ib.e - ib.s + 1);
-  Kokkos::View<Real*> debug_rho0("debug_rho0", nthreads);
-  Kokkos::View<Real*> debug_alpha("debug_alpha", nthreads);
-  Kokkos::View<int*> debug_used("debug_used", nthreads);
-  Kokkos::View<Real*> debug_ghost_densities("debug_ghost_densities", ng);
-  Kokkos::View<int*> debug_ghost_indices("debug_ghost_indices", ng);
-
-  Kokkos::parallel_for(
-      "OuterFitAndFillGhosts",
-      Kokkos::MDRangePolicy<Kokkos::Rank<2>>({kb.s, ib.s}, {kb.e+1, ib.e+1}),
-      KOKKOS_LAMBDA(const int &k, const int &i) {
-        auto &consb = cons_pack;
-        auto &primb = prim_pack;
-        const auto &coordsb = cons_pack.GetCoords();
-
-        const int idx = (k - kb.s) * (ib.e - ib.s + 1) + (i - ib.s);
-        const bool first_thread = (k == kb.s && i == ib.s);
-
-        Real Sx = 0.0, Sy = 0.0, Sxx = 0.0, Sxy = 0.0;
-        int used = 0;
-        
-        for (int m = 0; m < Nfit; ++m) {
-          int jcell = j_in_e - m;
-          Real y = coordsb.Xc<X2DIR>(jcell);
-          Real rho_val = consb(IDN, k, jcell, i);
-          
-          if (rho_val <= 0.0) continue;
-          
-          Real ln_rho = log(rho_val);
-          Sx += y;
-          Sy += ln_rho;
-          Sxx += y * y;
-          Sxy += y * ln_rho;
-          ++used;
-        }
-
-        debug_used(idx) = used;
-
-        Real rho0 = (Real)1e-30;
-        Real alpha = 0.0;
-        if (used >= 2) {
-          Real denom = used * Sxx - Sx * Sx;
-          if (fabs(denom) > 1e-30) {
-            Real slope = (used * Sxy - Sx * Sy) / denom;
-            Real intercept = (Sy - slope * Sx) / used;
-            alpha = -slope;
-            rho0 = exp(intercept);
-          } else {
-            rho0 = exp(Sy / used);
-          }
-        } else if (used == 1) {
-          rho0 = exp(Sy);
-        }
-        
-        debug_rho0(idx) = rho0;
-        debug_alpha(idx) = alpha;
-
-        for (int nyg = 1; nyg <= ng; ++nyg) {
-          int jghost = nyg + j_in_e;
-          Real yghost = coordsb.Xc<X2DIR>(jghost);
-          Real rho_bc = rho0 * exp(-alpha * yghost);
-          if (rho_bc <= (Real)1e-30) rho_bc = (Real)1e-30;
-
-          // use velocity from nearest interior cell
-          Real vx_interior = primb(IV2, k, j_in_e, i);
-          // If there's inflow into the grid, set the normal velocity to zero
-          if (vx_interior <= 0.0) {
-            primb(IV2, k, jghost, i) = 0.0;
-          } else {
-            primb(IV2, k, jghost, i) = 0.0;
-          }
-
-          primb(IDN, k, jghost, i) = rho_bc;
-          primb(IPR, k, jghost, i) = rho_bc * c_s_ * c_s_ ;
-          
-          if (first_thread) {
-            debug_ghost_densities(nyg - 1) = rho_bc;
-            debug_ghost_indices(nyg - 1) = jghost;
-          }
-        }
-      });
-  
-  Kokkos::fence();
-
-  auto h_rho0 = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_rho0);
-  auto h_alpha = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_alpha);
-  auto h_used = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_used);
-  auto h_ghost_densities = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_ghost_densities);
-  auto h_ghost_indices = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), debug_ghost_indices);
-
-  std::cout << "Outer BC Results (first few threads):" << std::endl;
-  int nprint = std::min(5, nthreads);
-  for (int n = 0; n < nprint; ++n) {
-    int k = kb.s + n / (ib.e - ib.s + 1);
-    int i = ib.s + n % (ib.e - ib.s + 1);
-    std::cout << "  (k=" << k << ", i=" << i << "): "
-              << "used=" << h_used(n) 
-              << ", rho0=" << h_rho0(n) 
-              << ", alpha=" << h_alpha(n) << std::endl;
-  }
-  
-  std::cout << "\nGhost cell densities assigned (for k=" << kb.s << ", i=" << ib.s << "):" << std::endl;
-  for (int nyg = 0; nyg < ng; ++nyg) {
-    std::cout << "  j=" << h_ghost_indices(nyg) 
-              << ": rho = " << h_ghost_densities(nyg) << std::endl;
-  }
-  
-  std::cout << "=== End Outer BC ===" << std::endl << std::endl;
-}
 
 //----------------------------------------------------------------------------------------
 //! \fn void StratHst(MeshData<Real> *md)
@@ -979,6 +798,36 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
     }
   }
 
+  // Parameters to inject overdense blobs into the simulation with a target overdensity
+  // and radius at a given cycle, time, or restart
+  auto inject_once_at_time =
+      pin->GetOrAddReal("problem/stratified_box", "inject_once_at_time", -1.0);
+  auto inject_once_at_cycle =
+      pin->GetOrAddInteger("problem/stratified_box", "inject_once_at_cycle", -1);
+  auto inject_once_on_restart =
+      pin->GetOrAddBoolean("problem/stratified_box", "inject_once_on_restart", false);
+
+  PARTHENON_REQUIRE_THROWS(
+      (inject_once_at_time < 0.0 && inject_once_at_cycle < 0 &&
+       !inject_once_on_restart) ||
+          (inject_once_at_cycle * inject_once_at_time < 0.0 && !inject_once_on_restart) ||
+          (inject_once_at_cycle * inject_once_at_time > 0.0 && inject_once_on_restart),
+      "injectng should only be set for one option (or none at all).");
+  // Make Params mutable as they're reset after inject
+  pkg->AddParam<>("turbulence/inject_once_at_time", inject_once_at_time, true);
+  pkg->AddParam<>("turbulence/inject_once_at_cycle", inject_once_at_cycle, true);
+  pkg->AddParam<>("turbulence/inject_once_on_restart", inject_once_on_restart, true);
+
+  auto inject_blob_radius = pin->GetReal("problem/stratified_box", "r_cloud_inserted");
+  pkg->AddParam<>("stratified_box/r_cloud_inserted", inject_blob_radius);
+
+  auto inject_blob_loc = pin->GetVector<Real>("problem/stratified_box", "loc_cloud_inserted");
+  pkg->AddParam<>("stratified_box/loc_cloud_inserted", inject_blob_loc);
+
+  auto inject_blob_chi =
+      pin->GetReal("problem/stratified_box", "chi_cloud_inserted");
+  pkg->AddParam<>("stratified_box/chi_cloud_inserted", inject_blob_chi);
+  
 }
 
 
@@ -1126,6 +975,9 @@ void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
 
     // actually drive turbulence
     Perturb(md, dt);
+
+    // Magic injection of blobs into the simulation
+    InjectBlob(md, tm, dt);
   }
 }
 

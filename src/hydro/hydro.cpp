@@ -233,10 +233,14 @@ TaskStatus AddUnsplitSources(MeshData<Real> *md, const SimTime &tm, const Real b
   const auto &enable_cooling = hydro_pkg->Param<Cooling>("enable_cooling");
 
   if (enable_cooling == Cooling::tabular) {
-    const TabularCooling &tabular_cooling =
-        hydro_pkg->Param<TabularCooling>("tabular_cooling");
-
-    tabular_cooling.SrcTerm(md, beta_dt);
+    const Real time = tm.time;
+    const Real cooling_start_time = hydro_pkg->Param<Real>("cooling_start_time");
+    
+    if (time >= cooling_start_time) {
+      const TabularCooling &tabular_cooling =
+          hydro_pkg->Param<TabularCooling>("tabular_cooling");
+      tabular_cooling.SrcTerm(md, beta_dt);
+    }
   }
   if (ProblemSourceUnsplit != nullptr) {
     ProblemSourceUnsplit(md, tm, beta_dt);
@@ -724,6 +728,9 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   const auto enable_cooling_str =
       pin->GetOrAddString("cooling", "enable_cooling", "none");
+    
+  const Real cooling_start_time = pin->GetOrAddReal("cooling", "start_time", 0.0);
+  pkg->AddParam<>("cooling_start_time", cooling_start_time);
 
   auto cooling = Cooling::none;
   if (enable_cooling_str == "tabular") {

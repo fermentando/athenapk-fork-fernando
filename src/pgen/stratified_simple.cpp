@@ -283,9 +283,9 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
           u(IDN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_0] * d_cgs_factor;
           u(IM1, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
-          u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
-          u(IM3, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_1] * m_cgs_factor;
-          u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * e_cgs_factor;
+          u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * m_cgs_factor;
+          u(IM3, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_3] * m_cgs_factor;
+          u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_4] * e_cgs_factor;
 
 
         }
