@@ -382,7 +382,7 @@ void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
-  const double rho0 = surface_density / 2/bc_H;  // midplane density
+  const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
   const double a    = bc_a;
   const double H    = bc_H;
 
@@ -422,7 +422,7 @@ void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
-  const double rho0 = surface_density / 2/ bc_H;  // midplane density
+  const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
   const double a    = bc_a;
   const double H    = bc_H;
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
