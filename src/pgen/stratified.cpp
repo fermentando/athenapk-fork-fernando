@@ -404,8 +404,8 @@ void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
           cons(IV3,k,j,i) = cons(IV3,k,jb.s,i);
 
           // Normal velocity: zero if inflow
-          if (cons(IV2,k,jb.s,i) >= 0.0) cons(IV2,k,j,i) = 0.0;
-          else cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
+          //if (cons(IV2,k,jb.s,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
+          cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
 
           Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
           cons(IPR,k,j,i) = rhoY * T;
@@ -429,7 +429,7 @@ void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
 
 
   pmb->par_for_bndry(
-      "StratOutflowInnerX2", nb, IndexDomain::outer_x2,
+      "StratOutflowOuterX2", nb, IndexDomain::outer_x2,
       parthenon::TopologicalElement::CC, coarse, fine,
       KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
           const auto &coordsb = cons_pack.GetCoords();
@@ -443,8 +443,8 @@ void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
           cons(IV3,k,j,i) = cons(IV3,k,jb.s,i);
 
           // Normal velocity: zero if inflow
-          if (cons(IV2,k,jb.s,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
-          else cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
+          //if (cons(IV2,k,jb.s,i) >= 0.0) cons(IV2,k,j,i) = 0.0;
+          cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
 
           Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
           cons(IPR,k,j,i) = rhoY * T;
