@@ -81,7 +81,8 @@ int main(int argc, char *argv[]) {
     pman.app_input->InitUserMeshData = wtopenrun::InitUserMeshData;
     pman.app_input->MeshProblemGenerator = wtopenrun::ProblemGenerator;
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
-                                              "wtopenrun_inflow_x2", wtopenrun::InflowWindX2);
+                                              "wtopenrun_inflow_x2",
+                                              wtopenrun::InflowWindX2);
     Hydro::ProblemInitPackageData = wtopenrun::ProblemInitPackageData;
     Hydro::ProblemSourceFirstOrder = wtopenrun::FrameBoosting;
   } else if (problem == "stratified_box") {
@@ -91,23 +92,27 @@ int main(int argc, char *argv[]) {
     Hydro::ProblemInitPackageData = stratified_box::ProblemInitPackageData;
     Tracers::ProblemInitTracerData = stratified_box::ProblemInitTracerData;
     Tracers::ProblemFillTracers = stratified_box::ProblemFillTracers;
-    Hydro::ProblemSourceFirstOrder = stratified_box::Driving;
+    Hydro::ProblemSourceFirstOrder = stratified_box::DrivingAndFrameTrack;
     pman.app_input->InitMeshBlockUserData = stratified_box::SetPhases;
     pman.app_input->MeshBlockUserWorkBeforeOutput = stratified_box::UserWorkBeforeOutput;
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
-                                              "StratOutflowInnerX2", stratified_box::StratOutflowInnerX2);
+                                              "StratOutflowInnerX2",
+                                              stratified_box::StratOutflowInnerX2);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
-                                              "StratOutflowOuterX2", stratified_box::StratOutflowOuterX2);
-  }else if (problem == "stratified_box_simple") {
+                                              "StratOutflowOuterX2",
+                                              stratified_box::StratOutflowOuterX2);
+  } else if (problem == "stratified_box_simple") {
     pman.app_input->InitUserMeshData = stratified_box_simple::InitUserMeshData;
     pman.app_input->MeshProblemGenerator = stratified_box_simple::ProblemGenerator;
     Hydro::ProblemSourceUnsplit = stratified_box_simple::StratUnsplitSrcTerm;
     Hydro::ProblemInitPackageData = stratified_box_simple::ProblemInitPackageData;
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
-                                              "StratOutflowInnerX2", stratified_box::StratOutflowInnerX2);
+                                              "StratOutflowInnerX2",
+                                              stratified_box::StratOutflowInnerX2);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
-                                              "StratOutflowOuterX2", stratified_box::StratOutflowOuterX2);
-  }else if (problem == "blast") {
+                                              "StratOutflowOuterX2",
+                                              stratified_box::StratOutflowOuterX2);
+  } else if (problem == "blast") {
     pman.app_input->InitUserMeshData = blast::InitUserMeshData;
     pman.app_input->ProblemGenerator = blast::ProblemGenerator;
     pman.app_input->UserWorkAfterLoop = blast::UserWorkAfterLoop;

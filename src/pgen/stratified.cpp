@@ -11,45 +11,42 @@
 // C headers
 
 // C++ headers
+#include <adios2.h>
 #include <algorithm> // min, max
 #include <cmath>     // log
 #include <cstring>   // strcmp()
 #include <fstream>   // bin file
-#include <adios2.h>
 
-//I/O for ICs reader
-#include <sys/mman.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h> 
+// I/O for ICs reader
 #include "globals.hpp"
+#include <fcntl.h>
 #include <filesystem>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 // Parthenon headers
 #include "basic_types.hpp"
 #include "kokkos_abstraction.hpp"
 #include "mesh/mesh.hpp"
+#include <globals.hpp>
 #include <iomanip>
 #include <ios>
+#include <iostream>
 #include <parthenon/driver.hpp>
 #include <parthenon/package.hpp>
 #include <random>
 #include <sstream>
-#include <iostream>
 #include <string>
-#include <globals.hpp>
-
 
 // AthenaPK headers
-#include "../main.hpp"
-#include "../units.hpp"
 #include "../eos/adiabatic_glmmhd.hpp"
 #include "../eos/adiabatic_hydro.hpp"
+#include "../main.hpp"
 #include "../tracers/tracers.hpp"
+#include "../units.hpp"
 #include "../utils/few_modes_ft.hpp"
 #include "utils/error_checking.hpp"
-
-
 
 namespace stratified_box {
 using namespace parthenon;
@@ -63,8 +60,6 @@ bool drive_turbulence;
 Real d_cgs_factor, m_cgs_factor, e_cgs_factor;
 Real c_s;
 int n_ghosts;
-
-
 
 void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
                                const parthenon::Real beta_dt) {
@@ -82,7 +77,7 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto a_over_H = hydro_pkg->Param<Real>("a_over_H");
   const auto surface_density = hydro_pkg->Param<Real>("surface_density");
   const auto H = hydro_pkg->Param<Real>("H_height");
-  const auto units = hydro_pkg->Param<Units>("units");    
+  const auto units = hydro_pkg->Param<Units>("units");
   const auto code_units_length = units.code_length_cgs();
   const auto G = units.gravitational_constant();
 
@@ -95,7 +90,8 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         const auto &coords = cons_pack.GetCoords(b);
 
         auto y_norm = coords.Xc<2>(j) / (a_over_H * H) * code_units_length;
-        const Real g_z =  2 * M_PI * G * surface_density * y_norm / std::sqrt(1 + y_norm * y_norm);
+        const Real g_z =
+            2 * M_PI * G * surface_density * y_norm / std::sqrt(1 + y_norm * y_norm);
 
         // Apply g_r as a source term
         const Real den = prim(IDN, k, j, i);
@@ -104,10 +100,6 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         cons(IEN, k, j, i) -= src * prim(IV2, k, j, i);
       });
 }
-
-
-
-
 
 //========================================================================================
 //! \fn void ProblemInitPackageData(ParameterInput *pin, parthenon::State *hydro_pkg)
@@ -123,28 +115,28 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   const auto &pkg = mesh->packages.Get("Hydro");
   const auto mbar_over_kb = pkg->Param<Real>("mbar_over_kb");
 
-  auto a_over_H= pin->GetReal("problem/stratified_box", "a_over_H");
+  auto a_over_H = pin->GetReal("problem/stratified_box", "a_over_H");
   auto surface_density = pin->GetReal("problem/stratified_box", "surface_density");
   auto T_base = pin->GetReal("problem/stratified_box", "T_base");
   auto T_cloud = pin->GetReal("problem/stratified_box", "T_cloud");
   drive_turbulence = pin->GetOrAddBoolean("problem/turbulence", "drive_turbulence", true);
   n_ghosts = pin->GetOrAddInteger("mesh", "nghost", 4);
 
-  pkg->AddParam<Real>("a_over_H", a_over_H );
+  pkg->AddParam<Real>("a_over_H", a_over_H);
   pkg->AddParam<Real>("surface_density", surface_density);
   pkg->AddParam<Real>("T_cloud", T_cloud);
   pkg->AddParam<Real>("gamma", gamma);
 
   const auto g0 = 2 * M_PI * units.gravitational_constant() * surface_density;
   c_s = std::sqrt(T_base / mbar_over_kb);
-  auto H_height = c_s*c_s/ g0;
+  auto H_height = c_s * c_s / g0;
+  auto rho0 = surface_density / 2 / a_over_H / H_height;
 
   pkg->AddParam<Real>("H_height", H_height);
-
+  pkg->AddParam<Real>("rho0", rho0);
 
   // Relevant timescales
   auto t_ff = std::sqrt(2.0 * H_height / g0);
-
 
   std::stringstream msg;
   msg << std::setprecision(2);
@@ -157,8 +149,8 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   msg << "###### c_s = " << c_s / units.cm_s() / 1e5 << " km/s" << std::endl;
   msg << "###### H = " << H_height * 1e-3 * units.kpc() << " pc" << std::endl;
   std::cout << msg.str() << std::endl;
-  
-    // (potentially) rescale global times only at the beginning of a simulation
+
+  // (potentially) rescale global times only at the beginning of a simulation
   auto rescale_code_time_to_tff =
       pin->GetOrAddBoolean("problem/stratified_box", "rescale_code_time_to_tff", false);
 
@@ -176,12 +168,11 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
         pin->SetReal(pib->block_name, "dt", dt * t_ff);
       }
       pib = pib->pnext; // move to next input block name
-    }   
+    }
   }
 }
 
-
-void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
+void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
 
   Units units(pin);
 
@@ -198,23 +189,21 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
   PARTHENON_REQUIRE_THROWS(myvar_in, "Could not find variable name in file.");
 
   d_cgs_factor = 1. / units.code_density_cgs();
-  m_cgs_factor = 1. / ( units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
-  e_cgs_factor = 1. / ( units.code_density_cgs() * pow(units.code_length_cgs(),2) / pow(units.code_time_cgs(),2));
-
+  m_cgs_factor =
+      1. / (units.code_density_cgs() * units.code_length_cgs() / units.code_time_cgs());
+  e_cgs_factor = 1. / (units.code_density_cgs() * pow(units.code_length_cgs(), 2) /
+                       pow(units.code_time_cgs(), 2));
 
   const auto nx = pmesh->GetDefaultBlockSize().nx(parthenon::X1DIR);
   const auto ny = pmesh->GetDefaultBlockSize().nx(parthenon::X2DIR);
   const auto nz = pmesh->GetDefaultBlockSize().nx(parthenon::X3DIR);
 
-  
   const int fields = 5;
-
 
   std::vector<double> ICsdata(fields * nx * ny * nz);
 
-
-  //Get meshblock for GPU
-  for (int b = 0; b < md->NumBlocks() ; b++) {
+  // Get meshblock for GPU
+  for (int b = 0; b < md->NumBlocks(); b++) {
 
     auto pmb = md->GetBlockData(b)->GetBlockPointer();
     auto hydro_pkg = pmb->packages.Get("Hydro");
@@ -224,7 +213,7 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     const auto nscalars = hydro_pkg->Param<int>("nscalars");
     const auto num_blocks = md->NumBlocks();
     const bool mhd_enabled = hydro_pkg->Param<Fluid>("fluid") == Fluid::glmmhd;
-  
+
     const auto loc = pmb->pmy_mesh->Forest().GetLegacyTreeLocation(pmb->loc);
     const auto gis = loc.lx1() * pmb->block_size.nx(X1DIR);
     const auto gjs = loc.lx2() * pmb->block_size.nx(X2DIR);
@@ -234,34 +223,30 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     const int loc2 = loc.lx2();
     const int loc3 = loc.lx3();
 
-
-    if (( loc.lx1() < 0) || ( loc.lx2() < 0) || ( loc.lx3() < 0)) {
+    if ((loc.lx1() < 0) || (loc.lx2() < 0) || (loc.lx3() < 0)) {
       printf("Value of loc1 is not valid... \n");
       continue;
     }
 
-
-    const adios2::Dims start{static_cast<unsigned long>(loc3), 
-                              static_cast<unsigned long>(loc2),
-                              static_cast<unsigned long>(loc1), 
-                              0,
-                              0,
-                              0,
-                              0};
+    const adios2::Dims start{static_cast<unsigned long>(loc3),
+                             static_cast<unsigned long>(loc2),
+                             static_cast<unsigned long>(loc1),
+                             0,
+                             0,
+                             0,
+                             0};
     const adios2::Dims counts{1,
                               1,
-                              1, 
+                              1,
                               static_cast<unsigned long>(fields),
                               static_cast<unsigned long>(nz),
                               static_cast<unsigned long>(ny),
                               static_cast<unsigned long>(nx)};
 
-
     myvar_in.SetSelection({start, counts});
     bpReader.Get(myvar_in, ICsdata.data(), adios2::Mode::Sync);
-    std::cerr << "Reading first item of meshblock data: " << ICsdata[0] << " from rank" << Globals::my_rank << std::endl;
-    
-
+    std::cerr << "Reading first item of meshblock data: " << ICsdata[0] << " from rank"
+              << Globals::my_rank << std::endl;
 
     // Create initial conditions for meshblock from these values:
     // initialize conserved variables
@@ -270,17 +255,14 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
     // initializing on host
     auto u = u_dev.GetHostMirrorAndCopy();
 
-
     IndexRange ib = mbd->GetBoundsI(IndexDomain::interior);
     IndexRange jb = mbd->GetBoundsJ(IndexDomain::interior);
     IndexRange kb = mbd->GetBoundsK(IndexDomain::interior);
-
 
     // Read problem parameters
     for (int k = 0; k < nz; k++) {
       for (int j = 0; j < ny; j++) {
         for (int i = 0; i < nx; i++) {
-
 
           int index_base_0 = ((0 * nz + k) * ny + j) * nx + i;
           int index_base_1 = ((1 * nz + k) * ny + j) * nx + i;
@@ -295,21 +277,18 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
           u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * m_cgs_factor;
           u(IM3, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_3] * m_cgs_factor;
           u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_4] * e_cgs_factor;
-
-
         }
       }
     }
 
     // copy initialized vars to device
     u_dev.DeepCopy(u);
-    }
+  }
   bpReader.EndStep();
   bpReader.Close();
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto &mbd = pmb->meshblock_data.Get();
   auto &u_dev = mbd->Get("cons").data;
-
 
   // For turbulence driving we need to initialize the velocity field
   IndexRange ib = pmb->cellbounds.GetBoundsI(IndexDomain::interior);
@@ -347,19 +326,13 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin,  MeshData<Real> *md) {
 
         u(IEN, k, j, i) += 0.5 * u(IDN, k, j, i) * (SQR(v1) + SQR(v2) + SQR(v3));
       });
-
-
-
 }
-
 
 void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
-                           const Real beta_dt) {
+                         const Real beta_dt) {
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
   GravitationalFieldSrcTerm(md, beta_dt);
-
 }
-
 
 ///========================================================================================
 /// Create boundary conditions from softness profile
@@ -367,48 +340,46 @@ void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
 
 KOKKOS_INLINE_FUNCTION
 double rho_profile_Y(double Y, double rho0, double a, double H) {
-    const double arg = Y / (a * H);
-    return rho0 * exp(-a * (sqrt(1.0 + arg*arg) - 1.0));
+  const double arg = Y / (a * H);
+  return rho0 * exp(-a * (sqrt(1.0 + arg * arg) - 1.0));
 }
 
 void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
   auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
 
-  const auto nb = IndexRange{0,0};
+  const auto nb = IndexRange{0, 0};
   const bool fine = false;
 
   // Local copies of parameters for device lambda
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
-  const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
-  const double a    = bc_a;
-  const double H    = bc_H;
+  const double rho0 = surface_density / 2 / bc_a / bc_H; // midplane density
+  const double a = bc_a;
+  const double H = bc_H;
 
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
 
-
   pmb->par_for_bndry(
-      "StratOutflowInnerX2", nb, IndexDomain::inner_x2,
-      parthenon::TopologicalElement::CC, coarse, fine,
-      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
-          const auto &coordsb = cons_pack.GetCoords();
-          auto &cons = cons_pack;
-          Real Y = coordsb.Xc<2>(j);
-          double rhoY = rho_profile_Y(Y, rho0, a, H);
+      "StratOutflowInnerX2", nb, IndexDomain::inner_x2, parthenon::TopologicalElement::CC,
+      coarse, fine, KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+        const auto &coordsb = cons_pack.GetCoords();
+        auto &cons = cons_pack;
+        Real Y = coordsb.Xc<2>(j);
+        double rhoY = rho_profile_Y(Y, rho0, a, H);
 
-          // Copy tangential velocities from last interior cell
-          cons(IDN,k,j,i) = rhoY;
-          cons(IV1,k,j,i) = cons(IV1,k,jb.s,i);
-          cons(IV3,k,j,i) = cons(IV3,k,jb.s,i);
+        // Copy tangential velocities from last interior cell
+        cons(IDN, k, j, i) = rhoY;
+        cons(IV1, k, j, i) = cons(IV1, k, jb.s, i);
+        cons(IV3, k, j, i) = cons(IV3, k, jb.s, i);
 
-          // Normal velocity: zero if inflow
-          //if (cons(IV2,k,jb.s,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
-          cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
+        // Normal velocity: zero if inflow
+        // if (cons(IV2,k,jb.s,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
+        cons(IV2, k, j, i) = cons(IV2, k, jb.s, i);
 
-          Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
-          cons(IPR,k,j,i) = rhoY * T;
+        Real T = cons(IPR, k, jb.s, i) / cons(IDN, k, jb.s, i);
+        cons(IPR, k, j, i) = rhoY * T;
       });
 }
 
@@ -416,38 +387,36 @@ void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
   auto pmb = mbd->GetBlockPointer();
   auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
 
-  const auto nb = IndexRange{0,0};
+  const auto nb = IndexRange{0, 0};
   const bool fine = false;
 
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
-  const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
-  const double a    = bc_a;
-  const double H    = bc_H;
+  const double rho0 = surface_density / 2 / bc_a / bc_H; // midplane density
+  const double a = bc_a;
+  const double H = bc_H;
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
 
-
   pmb->par_for_bndry(
-      "StratOutflowOuterX2", nb, IndexDomain::outer_x2,
-      parthenon::TopologicalElement::CC, coarse, fine,
-      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
-          const auto &coordsb = cons_pack.GetCoords();
-          auto &cons = cons_pack;
-          Real Y = coordsb.Xc<2>(j);
-          double rhoY = rho_profile_Y(Y, rho0, a, H);
+      "StratOutflowOuterX2", nb, IndexDomain::outer_x2, parthenon::TopologicalElement::CC,
+      coarse, fine, KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+        const auto &coordsb = cons_pack.GetCoords();
+        auto &cons = cons_pack;
+        Real Y = coordsb.Xc<2>(j);
+        double rhoY = rho_profile_Y(Y, rho0, a, H);
 
-          // Copy tangential velocities from last interior cell
-          cons(IDN,k,j,i) = rhoY;
-          cons(IV1,k,j,i) = cons(IV1,k,jb.s,i);
-          cons(IV3,k,j,i) = cons(IV3,k,jb.s,i);
+        // Copy tangential velocities from last interior cell
+        cons(IDN, k, j, i) = rhoY;
+        cons(IV1, k, j, i) = cons(IV1, k, jb.s, i);
+        cons(IV3, k, j, i) = cons(IV3, k, jb.s, i);
 
-          // Normal velocity: zero if inflow
-          //if (cons(IV2,k,jb.s,i) >= 0.0) cons(IV2,k,j,i) = 0.0;
-          cons(IV2,k,j,i) = cons(IV2,k,jb.s,i);
+        // Normal velocity: zero if inflow
+        // if (cons(IV2,k,jb.s,i) >= 0.0) cons(IV2,k,j,i) = 0.0;
+        cons(IV2, k, j, i) = cons(IV2, k, jb.s, i);
 
-          Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
-          cons(IPR,k,j,i) = rhoY * T;
+        Real T = cons(IPR, k, jb.s, i) / cons(IDN, k, jb.s, i);
+        cons(IPR, k, j, i) = rhoY * T;
       });
 }
 
@@ -471,10 +440,8 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
   pkg->UpdateParam("turbulence/inject_once_at_cycle", -1);
   pkg->UpdateParam("turbulence/inject_once_on_restart", false);
 
-  const auto radius =
-      pkg->Param<Real>("stratified_box/r_cloud_inserted");
-  const auto chi =
-      pkg->Param<Real>("stratified_box/chi_cloud_inserted");
+  const auto radius = pkg->Param<Real>("stratified_box/r_cloud_inserted");
+  const auto chi = pkg->Param<Real>("stratified_box/chi_cloud_inserted");
   const auto loc = pkg->Param<std::vector<Real>>("stratified_box/loc_cloud_inserted");
 
   // redef vars for easier capture (std::vector does not work)
@@ -493,17 +460,17 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
   const auto *const error_msg =
       "Blob bounds crossing domain bounds currently not supported.";
   PARTHENON_REQUIRE_THROWS(loc_x + radius < pmb->pmy_mesh->mesh_size.xmax(X1DIR),
-                            error_msg)
+                           error_msg)
   PARTHENON_REQUIRE_THROWS(loc_x - radius > pmb->pmy_mesh->mesh_size.xmin(X1DIR),
-                            error_msg)
+                           error_msg)
   PARTHENON_REQUIRE_THROWS(loc_y + radius < pmb->pmy_mesh->mesh_size.xmax(X2DIR),
-                            error_msg)
+                           error_msg)
   PARTHENON_REQUIRE_THROWS(loc_y - radius > pmb->pmy_mesh->mesh_size.xmin(X2DIR),
-                            error_msg)
+                           error_msg)
   PARTHENON_REQUIRE_THROWS(loc_z + radius < pmb->pmy_mesh->mesh_size.xmax(X3DIR),
-                            error_msg)
+                           error_msg)
   PARTHENON_REQUIRE_THROWS(loc_z - radius > pmb->pmy_mesh->mesh_size.xmin(X3DIR),
-                            error_msg)
+                           error_msg)
 
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
@@ -519,8 +486,8 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
   const auto gamma = pkg->Param<Real>("AdiabaticIndex");
 
   pmb->par_for(
-      "turbulence: inject blob", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e,
-      ib.s, ib.e, KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
+      "turbulence: inject blob", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
+      ib.e, KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
         const auto &coords = cons_pack.GetCoords(b);
         auto &cons = cons_pack(b);
 
@@ -530,11 +497,10 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
         const auto r = std::sqrt(SQR(x) + SQR(y) + SQR(z));
 
         if (r < radius) {
-          const auto kin_en_density =
-              0.5 *
-              (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
-                SQR(cons(IM3, k, j, i))) /
-              cons(IDN, k, j, i);
+          const auto kin_en_density = 0.5 *
+                                      (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
+                                       SQR(cons(IM3, k, j, i))) /
+                                      cons(IDN, k, j, i);
           auto rho_e = cons(IEN, k, j, i) - kin_en_density;
 
           // increase density according to overdensity
@@ -547,12 +513,11 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
           // of 1/chi in temperature)
           cons(IEN, k, j, i) = kin_en_density * chi + rho_e;
         }
-  });
+      });
 
-  // Update cooling routine 
-  //pkg->UpdateParam("enable_cooling", Cooling::tabular);
+  // Update cooling routine
+  // pkg->UpdateParam("enable_cooling", Cooling::tabular);
 }
-
 
 //----------------------------------------------------------------------------------------
 //! \fn void StratHst(MeshData<Real> *md)
@@ -560,7 +525,7 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
 // we'll use this enum to identify the various vars.
-enum class HstQuan {mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout,  Ms, Ma, pb };
+enum class HstQuan { mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout, Ms, Ma, pb };
 
 // Compute the local sum of cloud mass
 template <HstQuan hst_quan>
@@ -579,13 +544,11 @@ Real StratHst(MeshData<Real> *md) {
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
 
-
   // after this function is called the result is MPI_SUMed across all procs/meshblocks
   // thus, we're only concerned with local sums
   Real sum;
 
-  if (hst_quan == HstQuan::mcout || hst_quan == HstQuan::mwout)
-  {
+  if (hst_quan == HstQuan::mcout || hst_quan == HstQuan::mwout) {
     IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::outer_x2);
     IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::outer_x2);
     IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::outer_x2);
@@ -594,103 +557,100 @@ Real StratHst(MeshData<Real> *md) {
     const auto x2max = pmesh->mesh_size.xmax(X2DIR);
     const auto H_height = hydro_pkg->Param<Real>("H_height");
 
-
-
     pmb->par_reduce(
-      "WTopenrun::outflowing_gas", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
-        const auto &prims = prims_pack(b);
-        const auto &cons = cons_pack(b);
-        const auto &coords = prims_pack.GetCoords(b);
-        const Real rho = prims(IDN, k, j, i);    
-        const Real My = cons(IM2, k, j, i);      
-        const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / rho; 
+        "WTopenrun::outflowing_gas", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e,
+        ib.s, ib.e,
+        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+          const auto &prims = prims_pack(b);
+          const auto &cons = cons_pack(b);
+          const auto &coords = prims_pack.GetCoords(b);
+          const Real rho = prims(IDN, k, j, i);
+          const Real My = cons(IM2, k, j, i);
+          const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / rho;
 
-        if (coords.Xc<2>(j) > x2max && My > 0.0) {
-          if (hst_quan == HstQuan::mcout && temp <= 5 * T_cloud_){
-            const Real mass = rho * coords.CellVolume(k, j, i); 
-            lsum += mass; 
+          if (coords.Xc<2>(j) > x2max && My > 0.0) {
+            if (hst_quan == HstQuan::mcout && temp <= 5 * T_cloud_) {
+              const Real mass = rho * coords.CellVolume(k, j, i);
+              lsum += mass;
+            }
+            if (hst_quan == HstQuan::mwout && temp > 5 * T_cloud_ &&
+                temp <= 10 * T_cloud_) {
+              const Real mass = rho * coords.CellVolume(k, j, i);
+              lsum += mass;
+            }
           }
-          if (hst_quan == HstQuan::mwout && temp > 5 * T_cloud_ && temp <= 10 * T_cloud_){
-            const Real mass = rho * coords.CellVolume(k, j, i); 
-            lsum += mass; 
-          }
-        }
-      },
-    sum);
+        },
+        sum);
   }
 
-  else{
+  else {
 
-  pmb->par_reduce(
-    "WTOpenRun::hst_calc", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-    KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
-        const auto &cons = cons_pack(b);
-        const auto &prim = prims_pack(b);
-        const auto &coords = prims_pack.GetCoords(b);
-        const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+    pmb->par_reduce(
+        "WTOpenRun::hst_calc", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
+        ib.e,
+        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+          const auto &cons = cons_pack(b);
+          const auto &prim = prims_pack(b);
+          const auto &coords = prims_pack.GetCoords(b);
+          const Real temp =
+              mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
 
+          const auto vel2 = (prim(IV1, k, j, i) * prim(IV1, k, j, i) +
+                             prim(IV2, k, j, i) * prim(IV2, k, j, i) +
+                             prim(IV3, k, j, i) * prim(IV3, k, j, i));
 
-        const auto vel2 = (prim(IV1, k, j, i) * prim(IV1, k, j, i) +
-                           prim(IV2, k, j, i) * prim(IV2, k, j, i) +
-                           prim(IV3, k, j, i) * prim(IV3, k, j, i));
+          const auto c_s = std::sqrt(gamma * prim(IPR, k, j, i) /
+                                     prim(IDN, k, j, i)); // speed of sound
 
-        const auto c_s =
-            std::sqrt(gamma * prim(IPR, k, j, i) / prim(IDN, k, j, i)); // speed of sound
+          const auto e_kin = 0.5 * prim(IDN, k, j, i) * vel2;
 
-        const auto e_kin = 0.5 * prim(IDN, k, j, i) * vel2;
-
-        if (hst_quan == HstQuan::Ms) { // Ms
-          lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
-        }
-
-        if (fluid == Fluid::glmmhd) {
-          const auto B2 = (prim(IB1, k, j, i) * prim(IB1, k, j, i) +
-                           prim(IB2, k, j, i) * prim(IB2, k, j, i) +
-                           prim(IB3, k, j, i) * prim(IB3, k, j, i));
-
-          const auto e_mag = 0.5 * B2;
-
-          if (hst_quan == HstQuan::Ma) { // Ma
-            lsum += std::sqrt(e_kin / e_mag) * coords.CellVolume(k, j, i);
-          } else if (hst_quan == HstQuan::pb) { // plasma beta
-            lsum += prim(IPR, k, j, i) / e_mag * coords.CellVolume(k, j, i);
+          if (hst_quan == HstQuan::Ms) { // Ms
+            lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
           }
-        }
 
+          if (fluid == Fluid::glmmhd) {
+            const auto B2 = (prim(IB1, k, j, i) * prim(IB1, k, j, i) +
+                             prim(IB2, k, j, i) * prim(IB2, k, j, i) +
+                             prim(IB3, k, j, i) * prim(IB3, k, j, i));
 
-        if (temp <= 2*T_cloud_) { 
+            const auto e_mag = 0.5 * B2;
 
-          if (hst_quan == HstQuan::mc) {
-            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            if (hst_quan == HstQuan::Ma) { // Ma
+              lsum += std::sqrt(e_kin / e_mag) * coords.CellVolume(k, j, i);
+            } else if (hst_quan == HstQuan::pb) { // plasma beta
+              lsum += prim(IPR, k, j, i) / e_mag * coords.CellVolume(k, j, i);
+            }
           }
-          if (hst_quan == HstQuan::Mcx1) {
-            lsum += cons(IM1, k, j, i) *  coords.CellVolume(k, j, i);
+
+          if (temp <= 2 * T_cloud_) {
+
+            if (hst_quan == HstQuan::mc) {
+              lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mcx1) {
+              lsum += cons(IM1, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mcx2) {
+              lsum += cons(IM2, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mcx3) {
+              lsum += cons(IM3, k, j, i) * coords.CellVolume(k, j, i);
+            }
           }
-          if (hst_quan == HstQuan::Mcx2) {
-            lsum +=  cons(IM2, k, j, i) * coords.CellVolume(k, j, i);
+          if (temp <= 10 * T_cloud_) {
+            if (hst_quan == HstQuan::mbw) {
+              lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            }
           }
-          if (hst_quan == HstQuan::Mcx3) {
-            lsum +=  cons(IM3, k, j, i) * coords.CellVolume(k, j, i);
-          }
-          
-        }
-        if (temp <= 10 * T_cloud_){
-          if (hst_quan == HstQuan::mbw){
-            lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
-          }
-        }
-      },
-      sum);
+        },
+        sum);
   }
 
   return sum;
 }
 
-
 void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg) {
 
-  
   auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
   const auto fluid = pkg->Param<Fluid>("fluid");
 
@@ -717,12 +677,10 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
     hst_vars.emplace_back(parthenon::HistoryOutputVar(
         parthenon::UserHistoryOperation::sum, StratHst<HstQuan::pb>, "plasma_beta"));
   }
-  
+
   pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
 
-
-
-  //Driving turbulence parameters
+  // Driving turbulence parameters
   Metadata m({Metadata::Cell, Metadata::Derived, Metadata::OneCopy},
              std::vector<int>({3}));
   pkg->AddField("acc", m);
@@ -821,16 +779,23 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
   auto inject_blob_radius = pin->GetReal("problem/stratified_box", "r_cloud_inserted");
   pkg->AddParam<>("stratified_box/r_cloud_inserted", inject_blob_radius);
 
-  auto inject_blob_loc = pin->GetVector<Real>("problem/stratified_box", "loc_cloud_inserted");
+  auto inject_blob_loc =
+      pin->GetVector<Real>("problem/stratified_box", "loc_cloud_inserted");
   pkg->AddParam<>("stratified_box/loc_cloud_inserted", inject_blob_loc);
 
-  auto inject_blob_chi =
-      pin->GetReal("problem/stratified_box", "chi_cloud_inserted");
+  auto inject_blob_chi = pin->GetReal("problem/stratified_box", "chi_cloud_inserted");
   pkg->AddParam<>("stratified_box/chi_cloud_inserted", inject_blob_chi);
-  
+
+  // Frame tracking parameters for cold gas drift
+  auto enable_cold_gas_frame_track = pin->GetOrAddBoolean(
+      "problem/stratified_box", "enable_cold_gas_frame_track", false);
+  pkg->AddParam<>("stratified_box/enable_cold_gas_frame_track",
+                  enable_cold_gas_frame_track);
+
+  // Cumulative displacement of the frame (in code units)
+  // This is mutable to allow updates during simulation
+  pkg->AddParam<Real>("stratified_box/frame_displacement_y", 0.0, true);
 }
-
-
 
 void ProblemInitTracerData(ParameterInput * /*pin*/,
                            parthenon::StateDescriptor *tracer_pkg) {
@@ -858,7 +823,6 @@ void SetPhases(MeshBlock *pmb, ParameterInput *pin) {
   auto few_modes_ft = hydro_pkg->Param<FewModesFT>("turbulence/few_modes_ft");
   few_modes_ft.SetPhases(pmb, pin);
 }
-
 
 //----------------------------------------------------------------------------------------
 //! \fn void Generate()
@@ -967,10 +931,29 @@ void Perturb(MeshData<Real> *md, const Real dt) {
 //! \fn void FewModesTurbulenceDriver::Driving(void)
 //  \brief Generate and Perturb the velocity field
 
+// Forward declarations
+void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt);
+void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt);
+
+//----------------------------------------------------------------------------------------
+//! \fn void DrivingAndFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const
+//! Real dt)
+//  \brief Wrapper function that calls both turbulence driving and cold gas frame tracking
+//  This is used as the ProblemSourceFirstOrder callback
+
+void DrivingAndFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm,
+                          const Real dt) {
+  // Call turbulence driving
+  Driving(md, tm, dt);
+
+  // Call frame tracking for cold gas drift
+  ColdGasFrameTrack(md, tm, dt);
+}
+
 void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
   // evolve forcing
 
-  if (drive_turbulence){
+  if (drive_turbulence) {
     Generate(md, dt);
 
     // actually drive turbulence
@@ -1146,7 +1129,190 @@ TaskStatus ProblemFillTracers(MeshData<Real> *md, const parthenon::SimTime &tm,
   return TaskStatus::complete;
 }
 
+//========================================================================================
+//! \fn void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const
+//! Real dt)
+//  \brief Track and shift frame when cold gas drifts (using cumulative displacement)
+//
+//  When cold gas moves inward by one cell width in Y-direction, this function:
+//  1. Removes the trailing row (outermost in Y)
+//  2. Adds a new row at the inner Y boundary with density from rho_profile_Y
+//  3. Maintains velocity continuity and recomputes energy
+//========================================================================================
 
+void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
+  auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
 
+  // Check if frame tracking is enabled
+  const auto enable_frame_track =
+      hydro_pkg->Param<bool>("stratified_box/enable_cold_gas_frame_track");
+  if (!enable_frame_track) return;
+
+  // Get mutable reference to cumulative displacement
+  auto *p_frame_disp =
+      hydro_pkg->MutableParam<Real>("stratified_box/frame_displacement_y");
+
+  // Get density profile parameters
+  const auto surface_density = hydro_pkg->Param<Real>("surface_density");
+  const auto bc_a = hydro_pkg->Param<Real>("a_over_H");
+  const auto bc_H = hydro_pkg->Param<Real>("H_height");
+  const auto gamma = hydro_pkg->Param<Real>("gamma");
+  const auto mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+  const double rho0 = surface_density / 2.0 / bc_a / bc_H;
+  const double a = bc_a;
+  const double H = bc_H;
+  const double gm1 = gamma - 1.0;
+
+  // Loop over blocks
+  for (int b = 0; b < md->NumBlocks(); b++) {
+    auto &mbd = md->GetBlockData(b);
+    auto pmb = mbd->GetBlockPointer();
+    auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
+
+    IndexRange ib = mbd->GetBoundsI(IndexDomain::interior);
+    IndexRange jb = mbd->GetBoundsJ(IndexDomain::interior);
+    IndexRange kb = mbd->GetBoundsK(IndexDomain::interior);
+
+    const auto &coords = cons_pack.GetCoords();
+
+    // Calculate average inward velocity at inner Y boundary to update displacement
+    // We do this on host side by reading interior data
+    auto cons = mbd->Get("cons").data;
+    auto cons_h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), cons);
+
+    // Compute average v2 (velocity in Y-direction) at inner boundary
+    // Only include gas cells with temperature < 2e5 K
+    Real v2_avg = 0.0;
+    int count = 0;
+    const Real T_cut = 2e5; // Kelvin
+    for (int k = kb.s; k <= kb.e; k++) {
+      for (int i = ib.s; i <= ib.e; i++) {
+        Real rho_cell = cons_h(IDN, k, jb.s, i);
+        if (rho_cell <= 0.0) continue; // skip invalid
+        Real T_cell = mean_molecular_mass_by_kb * cons_h(IPR, k, jb.s, i) / rho_cell;
+        if (T_cell < T_cut) {
+          Real v2_cell = cons_h(IM2, k, jb.s, i) / rho_cell;
+          v2_avg += v2_cell;
+          count++;
+        }
+      }
+    }
+    if (count > 0) {
+      v2_avg /= static_cast<Real>(count);
+    } else {
+      v2_avg = 0.0; // no cold gas at boundary, no displacement from this block
+    }
+
+    // Update cumulative displacement (inward is negative)
+    *p_frame_disp += v2_avg * dt;
+
+    // Get cell width in Y-direction
+    Real dy = coords.Dx<2>(); // cell width
+
+    // Check if cumulative displacement exceeds one cell width
+    if (std::abs(*p_frame_disp) >= dy) {
+      // Determine shift direction
+      int num_shifts = static_cast<int>(std::floor(std::abs(*p_frame_disp) / dy));
+      int shift_dir = (*p_frame_disp < 0.0) ? -1 : 1; // -1 for inward, +1 for outward
+
+      // Perform shifts
+      for (int shift = 0; shift < num_shifts; shift++) {
+        if (shift_dir == -1) {
+          // Inward shift: remove last row, add at first row
+          // Shift data: row j ← row j+1 for j = [jb.s, jb.e-1]
+          for (int k = kb.s; k <= kb.e; k++) {
+            for (int j = jb.s; j < jb.e; j++) {
+              for (int i = ib.s; i <= ib.e; i++) {
+                for (int n = 0; n < cons_h.GetDim(0); n++) {
+                  cons_h(n, k, j, i) = cons_h(n, k, j + 1, i);
+                }
+              }
+            }
+          }
+
+          // Populate new row at jb.s with profile values
+          for (int k = kb.s; k <= kb.e; k++) {
+            for (int i = ib.s; i <= ib.e; i++) {
+              Real Y = coords.Xc<2>(jb.s);
+              double rhoY = rho_profile_Y(Y, rho0, a, H);
+
+              // Set density
+              cons_h(IDN, k, jb.s, i) = rhoY;
+
+              // Copy tangential velocities from next interior cell
+              cons_h(IM1, k, jb.s, i) = cons_h(IM1, k, jb.s + 1, i);
+              cons_h(IM3, k, jb.s, i) = cons_h(IM3, k, jb.s + 1, i);
+
+              // Set normal velocity from nearest interior cell (preserves flow pattern)
+              cons_h(IM2, k, jb.s, i) = cons_h(IM2, k, jb.s + 1, i);
+
+              // Compute pressure/energy: use temperature from nearest interior cell
+              Real T = cons_h(IPR, k, jb.s + 1, i) / cons_h(IDN, k, jb.s + 1, i);
+              Real ke = 0.5 *
+                        (cons_h(IM1, k, jb.s, i) * cons_h(IM1, k, jb.s, i) +
+                         cons_h(IM2, k, jb.s, i) * cons_h(IM2, k, jb.s, i) +
+                         cons_h(IM3, k, jb.s, i) * cons_h(IM3, k, jb.s, i)) /
+                        rhoY;
+              Real ie = T / gm1; // specific internal energy
+              cons_h(IEN, k, jb.s, i) = rhoY * (ie + 0.5 * ke);
+
+              // Pressure for storage
+              cons_h(IPR, k, jb.s, i) = rhoY * T;
+            }
+          }
+        } else {
+          // Outward shift: remove first row, add at last row
+          // Shift data: row j ← row j-1 for j = [jb.e, jb.s+1]
+          for (int k = kb.s; k <= kb.e; k++) {
+            for (int j = jb.e; j > jb.s; j--) {
+              for (int i = ib.s; i <= ib.e; i++) {
+                for (int n = 0; n < cons_h.GetDim(0); n++) {
+                  cons_h(n, k, j, i) = cons_h(n, k, j - 1, i);
+                }
+              }
+            }
+          }
+
+          // Populate new row at jb.e with profile values
+          for (int k = kb.s; k <= kb.e; k++) {
+            for (int i = ib.s; i <= ib.e; i++) {
+              Real Y = coords.Xc<2>(jb.e);
+              double rhoY = rho_profile_Y(Y, rho0, a, H);
+
+              // Set density
+              cons_h(IDN, k, jb.e, i) = rhoY;
+
+              // Copy tangential velocities from nearest interior cell
+              cons_h(IM1, k, jb.e, i) = cons_h(IM1, k, jb.e - 1, i);
+              cons_h(IM3, k, jb.e, i) = cons_h(IM3, k, jb.e - 1, i);
+
+              // Set normal velocity from nearest interior cell
+              cons_h(IM2, k, jb.e, i) = cons_h(IM2, k, jb.e - 1, i);
+
+              // Compute energy
+              Real T = cons_h(IPR, k, jb.e - 1, i) / cons_h(IDN, k, jb.e - 1, i);
+              Real ke = 0.5 *
+                        (cons_h(IM1, k, jb.e, i) * cons_h(IM1, k, jb.e, i) +
+                         cons_h(IM2, k, jb.e, i) * cons_h(IM2, k, jb.e, i) +
+                         cons_h(IM3, k, jb.e, i) * cons_h(IM3, k, jb.e, i)) /
+                        rhoY;
+              Real ie = T / gm1;
+              cons_h(IEN, k, jb.e, i) = rhoY * (ie + 0.5 * ke);
+
+              // Pressure for storage
+              cons_h(IPR, k, jb.e, i) = rhoY * T;
+            }
+          }
+        }
+      }
+
+      // Copy back to device
+      cons.DeepCopy(cons_h);
+
+      // Reset displacement counter
+      *p_frame_disp -= shift_dir * num_shifts * dy;
+    }
+  }
 }
 
+} // namespace stratified_box
