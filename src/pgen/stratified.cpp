@@ -380,6 +380,7 @@ void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
 
         Real T = cons(IPR, k, jb.s, i) / cons(IDN, k, jb.s, i);
         cons(IPR, k, j, i) = rhoY * T;
+        
       });
 }
 
@@ -408,14 +409,14 @@ void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
 
         // Copy tangential velocities from last interior cell
         cons(IDN, k, j, i) = rhoY;
-        cons(IV1, k, j, i) = cons(IV1, k, jb.s, i);
-        cons(IV3, k, j, i) = cons(IV3, k, jb.s, i);
+        cons(IV1, k, j, i) = cons(IV1, k, jb.e, i);
+        cons(IV3, k, j, i) = cons(IV3, k, jb.e, i);
 
         // Normal velocity: zero if inflow
-        // if (cons(IV2,k,jb.s,i) >= 0.0) cons(IV2,k,j,i) = 0.0;
-        cons(IV2, k, j, i) = cons(IV2, k, jb.s, i);
+        //if (cons(IV2,k,jb.e,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
+        cons(IV2, k, j, i) = cons(IV2, k, jb.e, i);
 
-        Real T = cons(IPR, k, jb.s, i) / cons(IDN, k, jb.s, i);
+        Real T = cons(IPR, k, jb.e, i) / cons(IDN, k, jb.e, i);
         cons(IPR, k, j, i) = rhoY * T;
       });
 }
@@ -946,8 +947,12 @@ void DrivingAndFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm,
   // Call turbulence driving
   Driving(md, tm, dt);
 
+  // NOTE: Temporarily disabled due to issues with boundary conditions
+  // (see conversation and issue tracking). To re-enable, uncomment the
+  // following line. Leaving the implementation in place so this can be
+  // restored without further edits.
   // Call frame tracking for cold gas drift
-  ColdGasFrameTrack(md, tm, dt);
+  // ColdGasFrameTrack(md, tm, dt);
 }
 
 void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
@@ -1207,7 +1212,7 @@ void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const R
     *p_frame_disp += v2_avg * dt;
 
     // Get cell width in Y-direction
-    Real dy = coords.Dx<2>(); // cell width
+    Real dy = (pmb->pmy_mesh->mesh_size.xmax(X2DIR) - pmb->pmy_mesh->mesh_size.xmin(X2DIR))/pmb->pmy_mesh->GetDefaultBlockSize().nx(parthenon::X2DIR); // cell width
 
     // Check if cumulative displacement exceeds one cell width
     if (std::abs(*p_frame_disp) >= dy) {
