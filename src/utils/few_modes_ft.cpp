@@ -396,10 +396,10 @@ void FewModesFT::Generate(MeshData<Real> *md, const Real dt,
         if (window_turbulence) {
           if (y < wxmin) {
           // taper to zero below 0.1
-            window = exp(-(wxmin - y) / abs(wxmin)* 3);  // adjust 0.02 for sharpness
+            window = exp(-(wxmin - y) / 0.625);  // adjust 0.02 for sharpness
           } else if (y > wxmax) {
             // taper to zero above 0.8
-            window = exp(-(y - wxmax) / abs(1 - wxmax) * 3);  // adjust 0.02 for sharpness
+            window = exp(-(y - wxmax) / 0.625);  // adjust 0.02 for sharpness
           } 
         } 
 

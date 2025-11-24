@@ -23,6 +23,7 @@ target_sources(athenaPK PRIVATE
     lw_implode.cpp
     orszag_tang.cpp
     rand_blast.cpp
+    sn.cpp
     sod.cpp
     turbulence.cpp
     wtopenrun.cpp

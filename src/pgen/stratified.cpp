@@ -344,7 +344,7 @@ double rho_profile_Y(double Y, double rho0, double a, double H) {
   return rho0 * exp(-a * (sqrt(1.0 + arg * arg) - 1.0));
 }
 
-void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
   auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
 
@@ -355,9 +355,58 @@ void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
-  const double rho0 = surface_density / 2 / bc_a / bc_H; // midplane density
-  const double a = bc_a;
-  const double H = bc_H;
+  const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
+  const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
+
+  const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  const auto jg = pmb->cellbounds.GetBoundsJ(IndexDomain::inner_x2);
+
+
+  pmb->par_for_bndry(
+      "StratOutflowInnerX2", nb, IndexDomain::inner_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+          double prsY = 1e6 * rhoY / mbar_over_kb;
+
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+
+
+          // Mirror velocity profile 
+          const auto j_mirror = jb.s + (jg.e - j);
+          cons(IM1,k,j,i) = rhoY * cons(IM1,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM2,k,j,i) = rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM3,k,j,i) = rhoY * cons(IM3,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+
+          const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
+          cons(IEN,k,j,i) = rhoY * e + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
+          
+      });
+}
+
+void StratInflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
+
+  const auto nb = IndexRange{0,0};
+  const bool fine = false;
+  const auto gamma = pmb->packages.Get("Hydro")->Param<Real>("gamma");
+  const auto gm1 = gamma - 1.0;
+
+  // Local copies of parameters for device lambda
+  auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
+  auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
+  auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
 
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
 
@@ -369,22 +418,49 @@ void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
         Real Y = coordsb.Xc<2>(j);
         double rhoY = rho_profile_Y(Y, rho0, a, H);
 
-        // Copy tangential velocities from last interior cell
-        cons(IDN, k, j, i) = rhoY;
-        cons(IV1, k, j, i) = cons(IV1, k, jb.s, i);
-        cons(IV3, k, j, i) = cons(IV3, k, jb.s, i);
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+          Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
+          Real ci = sqrt( gamma * T );
 
-        // Normal velocity: zero if inflow
-        // if (cons(IV2,k,jb.s,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
-        cons(IV2, k, j, i) = cons(IV2, k, jb.s, i);
+          auto V_tot = sqrt( SQR(cons(IV1,k,jb.s,i)) + SQR(cons(IV2,k,jb.s,i)) + SQR(cons(IV3,k,jb.s,i)) );
+          auto Hi = ci * ci / gm1 + 0.5 * V_tot * V_tot;
+          auto J_riemann = -V_tot + 2.0 * ci / gm1;
 
-        Real T = cons(IPR, k, jb.s, i) / cons(IDN, k, jb.s, i);
-        cons(IPR, k, j, i) = rhoY * T;
-        
+          // Find biggest cb root 
+          // Rewrite equation as: c_b^2/gm1 + 0.5*(J_riemann - 2*c_b/gm1)^2 - Hi = 0
+          // Expanding: c_b^2/gm1 + 0.5*(J_riemann^2 - 4*J_riemann*c_b/gm1 + 4*c_b^2/gm1^2) - Hi = 0
+          // Multiply by gm1: c_b^2 + 0.5*gm1*(J_riemann^2 - 4*J_riemann*c_b/gm1 + 4*c_b^2/gm1^2) - Hi*gm1 = 0
+          // Simplify: c_b^2 + 0.5*gm1*J_riemann^2 - 2*J_riemann*c_b + 2*c_b^2/gm1 - Hi*gm1 = 0
+          // Collect c_b terms: (1 + 2/gm1)*c_b^2 - 2*J_riemann*c_b + (0.5*gm1*J_riemann^2 - Hi*gm1) = 0
+
+          auto a_coeff = 1.0 + 2.0 / gm1;
+          auto b_coeff = -2.0 * J_riemann;
+          auto c_coeff = 0.5 * gm1 * J_riemann * J_riemann - Hi * gm1;
+
+          auto discriminant = b_coeff * b_coeff - 4.0 * a_coeff * c_coeff;
+          auto c_b = (-b_coeff + sqrt(discriminant)) / (2.0 * a_coeff);  // largest root
+
+          auto Vn = -J_riemann + 2.0 * c_b / gm1;
+          auto Mn = Vn / c_b;
+
+          // Define inner pressure and temperature
+
+          auto pb = cons(IPR,k,jb.s,i) * pow( (1.0 + 0.5 * gm1 * Mn * Mn), (gamma / gm1) );
+          auto Tb = T * pow( (1.0 + 0.5 * gm1 * Mn * Mn), -1.0);
+          auto rho_b = pb / Tb;
+
+          // Set boundary conditions
+          cons(IDN,k,j,i) = rho_b;
+          cons(IV1,k,j,i) = 0;
+          cons(IV3,k,j,i) = 0;
+          cons(IV2,k,j,i) = Vn;
+          cons(IPR,k,j,i) = pb;
+
       });
 }
 
-void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
   auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
 
@@ -394,30 +470,104 @@ void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
-  const double rho0 = surface_density / 2 / bc_a / bc_H; // midplane density
-  const double a = bc_a;
-  const double H = bc_H;
+  const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
+  const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  const auto jg = pmb->cellbounds.GetBoundsJ(IndexDomain::outer_x2);
 
   pmb->par_for_bndry(
-      "StratOutflowOuterX2", nb, IndexDomain::outer_x2, parthenon::TopologicalElement::CC,
-      coarse, fine, KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
-        const auto &coordsb = cons_pack.GetCoords();
-        auto &cons = cons_pack;
-        Real Y = coordsb.Xc<2>(j);
-        double rhoY = rho_profile_Y(Y, rho0, a, H);
+      "StratOutflowInnerX2", nb, IndexDomain::outer_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+          auto prsY = 1e6 * rhoY / mbar_over_kb;
 
-        // Copy tangential velocities from last interior cell
-        cons(IDN, k, j, i) = rhoY;
-        cons(IV1, k, j, i) = cons(IV1, k, jb.e, i);
-        cons(IV3, k, j, i) = cons(IV3, k, jb.e, i);
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
 
-        // Normal velocity: zero if inflow
-        //if (cons(IV2,k,jb.e,i) <= 0.0) cons(IV2,k,j,i) = 0.0;
-        cons(IV2, k, j, i) = cons(IV2, k, jb.e, i);
+          // Mirror velocity profile 
+          const auto j_mirror = jb.e - (j - jg.s);
+          cons(IM1,k,j,i) = rhoY * cons(IM1,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM2,k,j,i) = rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM3,k,j,i) = rhoY * cons(IM3,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
 
-        Real T = cons(IPR, k, jb.e, i) / cons(IDN, k, jb.e, i);
-        cons(IPR, k, j, i) = rhoY * T;
+          const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
+          cons(IEN,k,j,i) = rhoY * e + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
+
+      });
+}
+
+void StratInflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
+
+  const auto nb = IndexRange{0,0};
+  const bool fine = false;
+  const auto gamma = pmb->packages.Get("Hydro")->Param<Real>("gamma");
+  const auto gm1 = gamma - 1.0;
+
+  auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
+  auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
+  auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
+  const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+
+
+  pmb->par_for_bndry(
+      "StratOutflowOuterX2", nb, IndexDomain::inner_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+          Real T = cons(IPR,k,jb.e,i) / cons(IDN,k,jb.e,i);
+          Real ci = sqrt( gamma * T );
+
+          auto V_tot = sqrt( SQR(cons(IV1,k,jb.e,i)) + SQR(cons(IV2,k,jb.e,i)) + SQR(cons(IV3,k,jb.e,i)) );
+          auto Hi = ci * ci / gm1 + 0.5 * V_tot * V_tot;
+          auto J_riemann = -V_tot + 2.0 * ci / gm1;
+
+          // Find biggest cb root 
+          // Rewrite equation as: c_b^2/gm1 + 0.5*(J_riemann - 2*c_b/gm1)^2 - Hi = 0
+          // Expanding: c_b^2/gm1 + 0.5*(J_riemann^2 - 4*J_riemann*c_b/gm1 + 4*c_b^2/gm1^2) - Hi = 0
+          // Multiply by gm1: c_b^2 + 0.5*gm1*(J_riemann^2 - 4*J_riemann*c_b/gm1 + 4*c_b^2/gm1^2) - Hi*gm1 = 0
+          // Simplify: c_b^2 + 0.5*gm1*J_riemann^2 - 2*J_riemann*c_b + 2*c_b^2/gm1 - Hi*gm1 = 0
+          // Collect c_b terms: (1 + 2/gm1)*c_b^2 - 2*J_riemann*c_b + (0.5*gm1*J_riemann^2 - Hi*gm1) = 0
+
+          auto a_coeff = 1.0 + 2.0 / gm1;
+          auto b_coeff = -2.0 * J_riemann;
+          auto c_coeff = 0.5 * gm1 * J_riemann * J_riemann - Hi * gm1;
+
+          auto discriminant = b_coeff * b_coeff - 4.0 * a_coeff * c_coeff;
+          auto c_b = (-b_coeff + sqrt(discriminant)) / (2.0 * a_coeff);  // largest root
+
+          auto Vn = -J_riemann + 2.0 * c_b / gm1;
+          auto Mn = Vn / c_b;
+
+          // Define inner pressure and temperature
+
+          auto pb = cons(IPR,k,jb.e,i) * pow( (1.0 + 0.5 * gm1 * Mn * Mn), (gamma / gm1) );
+          auto Tb = T * pow( (1.0 + 0.5 * gm1 * Mn * Mn), -1.0);
+          auto rho_b = pb / Tb;
+
+          // Set boundary conditions
+          cons(IDN,k,j,i) = rho_b;
+          cons(IV1,k,j,i) = 0;
+          cons(IV3,k,j,i) = 0;
+          cons(IV2,k,j,i) = Vn;
+          cons(IPR,k,j,i) = pb;
+
       });
 }
 
