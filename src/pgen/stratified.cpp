@@ -359,6 +359,8 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
   const double a    = bc_a;
   const double H    = bc_H;
+  const auto gamma = pmb->packages.Get("Hydro")->Param<Real>("gamma");
+  const auto gm1 = gamma - 1.0;
 
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   const auto jg = pmb->cellbounds.GetBoundsJ(IndexDomain::inner_x2);
@@ -381,12 +383,13 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
 
           // Mirror velocity profile 
           const auto j_mirror = jb.s + (jg.e - j);
-          cons(IM1,k,j,i) = rhoY * cons(IM1,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          cons(IM2,k,j,i) = rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          cons(IM3,k,j,i) = rhoY * cons(IM3,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM1,k,j,i) = 0;//rhoY * cons(IM1,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          if (cons(IM2, k, jb.s, i) < 0.) cons(IM2,k,j,i) = 0;//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          else cons(IM2,k,j,i) = cons(IM2, k, jb.s, i);//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM3,k,j,i) = 0;//rhoY * cons(IM3,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
 
-          const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
-          cons(IEN,k,j,i) = rhoY * e + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
+          //const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
+          cons(IEN,k,j,i) = prsY / gm1 + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
           
       });
 }
@@ -476,6 +479,8 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   const double H    = bc_H;
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   const auto jg = pmb->cellbounds.GetBoundsJ(IndexDomain::outer_x2);
+  const auto gamma = pmb->packages.Get("Hydro")->Param<Real>("gamma");
+  const auto gm1 = gamma - 1.0;
 
   pmb->par_for_bndry(
       "StratOutflowInnerX2", nb, IndexDomain::outer_x2,
@@ -492,12 +497,13 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
 
           // Mirror velocity profile 
           const auto j_mirror = jb.e - (j - jg.s);
-          cons(IM1,k,j,i) = rhoY * cons(IM1,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          cons(IM2,k,j,i) = rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          cons(IM3,k,j,i) = rhoY * cons(IM3,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM1,k,j,i) = 0;
+          if (cons(IM2, k, jb.e, i) > 0.) cons(IM2,k,j,i) = 0;//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          else cons(IM2,k,j,i) = cons(IM2, k, jb.e, i);//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM3,k,j,i) = 0;
 
-          const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
-          cons(IEN,k,j,i) = rhoY * e + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
+          //const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
+          cons(IEN,k,j,i) = prsY / gm1 + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
 
       });
 }
@@ -668,6 +674,101 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
 
   // Update cooling routine
   // pkg->UpdateParam("enable_cooling", Cooling::tabular);
+}
+
+void Rescale(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  auto pkg = pmb->packages.Get("Hydro");
+
+  const auto rescale_once_at_time = pkg->Param<Real>("turbulence/rescale_once_at_time");
+  const auto rescale_once_at_cycle = pkg->Param<int>("turbulence/rescale_once_at_cycle");
+  const auto rescale_once_on_restart =
+      pkg->Param<bool>("turbulence/rescale_once_on_restart");
+
+  // Check if any condition is met for rescaling
+  if (!((rescale_once_at_time >= tm.time && rescale_once_at_time < tm.time + dt) ||
+        (rescale_once_at_cycle == tm.ncycle) || rescale_once_on_restart)) {
+    return;
+  }
+
+  // Always disable rescaling as the original value doesn't matter
+  pkg->UpdateParam("turbulence/rescale_once_at_time", -1.0);
+  pkg->UpdateParam("turbulence/rescale_once_at_cycle", -1);
+  pkg->UpdateParam("turbulence/rescale_once_on_restart", false);
+
+  const auto rescale_to_rms_Ms = pkg->Param<Real>("turbulence/rescale_to_rms_Ms");
+  PARTHENON_REQUIRE_THROWS(rescale_to_rms_Ms > 0.0, "What's a negative Mach number?");
+
+  if (parthenon::Globals::my_rank == 0) {
+    std::stringstream msg;
+    msg << std::setprecision(2);
+    msg << "\n# Turbulence driver: rescaling to an RMS Ms of " << rescale_to_rms_Ms;
+    msg << " by resetting the temperature.\n\n";
+    std::cout << msg.str();
+  }
+
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+  auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+
+  const auto fluid = pkg->Param<Fluid>("fluid");
+  // To fix this, we'd just have to account for the magnetic energy in the reduction
+  PARTHENON_REQUIRE(fluid == Fluid::euler,
+                    "Rescaling only supported for hydro sims at the moment.");
+
+  const auto gamma = pkg->Param<Real>("AdiabaticIndex");
+
+  Real Ms2_sum;
+  Kokkos::parallel_reduce(
+      "turbulence: calc RMS Ms",
+      Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
+          {0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e + 1, jb.e + 1, ib.e + 1},
+          {1, 1, 1, ib.e + 1 - ib.s}),
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lMs2_sum) {
+        const auto &coords = cons_pack.GetCoords(b);
+        auto &cons = cons_pack(b);
+
+        const auto kin_en_density = 0.5 *
+                                    (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
+                                     SQR(cons(IM3, k, j, i))) /
+                                    cons(IDN, k, j, i);
+        auto pres = (gamma - 1.0) * (cons(IEN, k, j, i) - kin_en_density);
+        lMs2_sum += 2.0 * kin_en_density / (gamma * pres) * coords.CellVolume(k, j, i);
+      },
+      Ms2_sum);
+
+#ifdef MPI_PARALLEL
+  // Sum the perturbations over all processors
+  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, &Ms2_sum, 1, MPI_PARTHENON_REAL,
+                                    MPI_SUM, MPI_COMM_WORLD));
+#endif // MPI_PARALLEL
+
+  const auto Lx =
+      pmb->pmy_mesh->mesh_size.xmax(X1DIR) - pmb->pmy_mesh->mesh_size.xmin(X1DIR);
+  const auto Ly =
+      pmb->pmy_mesh->mesh_size.xmax(X2DIR) - pmb->pmy_mesh->mesh_size.xmin(X2DIR);
+  const auto Lz =
+      pmb->pmy_mesh->mesh_size.xmax(X3DIR) - pmb->pmy_mesh->mesh_size.xmin(X3DIR);
+  auto norm = SQR(rescale_to_rms_Ms) / (Ms2_sum / (Lx * Ly * Lz));
+
+  pmb->par_for(
+      "Rescale temperature to target rms Ms", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e,
+      jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
+        const auto &coords = cons_pack.GetCoords(b);
+        auto &cons = cons_pack(b);
+
+        const auto kin_en_density = 0.5 *
+                                    (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
+                                     SQR(cons(IM3, k, j, i))) /
+                                    cons(IDN, k, j, i);
+
+        auto e = (cons(IEN, k, j, i) - kin_en_density) / cons(IDN, k, j, i);
+
+        cons(IEN, k, j, i) = kin_en_density + e / norm * cons(IDN, k, j, i);
+      });
 }
 
 //----------------------------------------------------------------------------------------
@@ -907,6 +1008,32 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
     }
   }
 
+
+  // Parameters to rescale the simulation to a target Mach number at a given cycle,
+  // time, or restart
+  auto rescale_once_at_time =
+      pin->GetOrAddReal("problem/stratified_box", "rescale_once_at_time", -1.0);
+  auto rescale_once_at_cycle =
+      pin->GetOrAddInteger("problem/stratified_box", "rescale_once_at_cycle", -1);
+  auto rescale_once_on_restart =
+      pin->GetOrAddBoolean("problem/stratified_box", "rescale_once_on_restart", false);
+
+  PARTHENON_REQUIRE_THROWS(
+      (rescale_once_at_time < 0.0 && rescale_once_at_cycle < 0 &&
+       !rescale_once_on_restart) ||
+          (rescale_once_at_cycle * rescale_once_at_time < 0.0 &&
+           !rescale_once_on_restart) ||
+          (rescale_once_at_cycle * rescale_once_at_time > 0.0 && rescale_once_on_restart),
+      "Rescaling should only be set for one option (or none at all).");
+  // Make Params mutable as they're reset after rescale
+  pkg->AddParam<>("turbulence/rescale_once_at_time", rescale_once_at_time, true);
+  pkg->AddParam<>("turbulence/rescale_once_at_cycle", rescale_once_at_cycle, true);
+  pkg->AddParam<>("turbulence/rescale_once_on_restart", rescale_once_on_restart, true);
+
+  auto rescale_to_rms_Ms =
+      pin->GetOrAddReal("problem/stratified_box", "rescale_to_rms_Ms", -1.0);
+  pkg->AddParam<>("turbulence/rescale_to_rms_Ms", rescale_to_rms_Ms);
+
   // Parameters to inject overdense blobs into the simulation with a target overdensity
   // and radius at a given cycle, time, or restart
   auto inject_once_at_time =
@@ -926,6 +1053,7 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
   pkg->AddParam<>("turbulence/inject_once_at_time", inject_once_at_time, true);
   pkg->AddParam<>("turbulence/inject_once_at_cycle", inject_once_at_cycle, true);
   pkg->AddParam<>("turbulence/inject_once_on_restart", inject_once_on_restart, true);
+
 
   auto inject_blob_radius = pin->GetReal("problem/stratified_box", "r_cloud_inserted");
   pkg->AddParam<>("stratified_box/r_cloud_inserted", inject_blob_radius);
@@ -1102,7 +1230,7 @@ void DrivingAndFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm,
   // following line. Leaving the implementation in place so this can be
   // restored without further edits.
   // Call frame tracking for cold gas drift
-  // ColdGasFrameTrack(md, tm, dt);
+  ColdGasFrameTrack(md, tm, dt);
 }
 
 void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
@@ -1113,6 +1241,10 @@ void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
 
     // actually drive turbulence
     Perturb(md, dt);
+
+    // Magic rescaling of simulation to target regime
+    Rescale(md, tm, dt);
+
 
     // Magic injection of blobs into the simulation
     InjectBlob(md, tm, dt);
@@ -1303,9 +1435,10 @@ void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const R
       hydro_pkg->Param<bool>("stratified_box/enable_cold_gas_frame_track");
   if (!enable_frame_track) return;
 
-  // Get mutable reference to cumulative displacement
-  auto *p_frame_disp =
+  // Get pointer to cumulative displacement
+  Real* const p_frame_disp =
       hydro_pkg->MutableParam<Real>("stratified_box/frame_displacement_y");
+  Real& frame_disp = *p_frame_disp;
 
   // Get density profile parameters
   const auto surface_density = hydro_pkg->Param<Real>("surface_density");
@@ -1318,155 +1451,195 @@ void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const R
   const double H = bc_H;
   const double gm1 = gamma - 1.0;
 
-  // Loop over blocks
-  for (int b = 0; b < md->NumBlocks(); b++) {
-    auto &mbd = md->GetBlockData(b);
-    auto pmb = mbd->GetBlockPointer();
-    auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"});
+  // Pack all blocks' conserved variables for parallel reduction
+  auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
 
-    IndexRange ib = mbd->GetBoundsI(IndexDomain::interior);
-    IndexRange jb = mbd->GetBoundsJ(IndexDomain::interior);
-    IndexRange kb = mbd->GetBoundsK(IndexDomain::interior);
+  // Compute mass-weighted average v2 at inner boundary (jb.s)
+  // Only include gas cells with temperature < 2e5 K
+  Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
+  const Real T_cut = 2e5; // Kelvin
 
-    const auto &coords = cons_pack.GetCoords();
+  Kokkos::parallel_reduce(
+      "InnerBoundary::cold_gas_v2_mass_weighted",
+      Kokkos::MDRangePolicy<Kokkos::Rank<3>>(
+          {0, kb.s, ib.s},
+          {cons_pack.GetDim(5), kb.e + 1, ib.e + 1}
+      ),
+      KOKKOS_LAMBDA(const int &b, const int &k, const int &i,
+                    Real &local_momentum_sum, Real &local_mass_sum) {
+          auto &cons = cons_pack(b);
+          const int j = jb.s; // Inner boundary in Y-direction
+          
+          const Real rho_cell = cons(IDN, k, j, i);
+          if (rho_cell <= 0.0) return; // Skip invalid cells
+          
+          const Real T_cell = mean_molecular_mass_by_kb * cons(IPR, k, j, i) / rho_cell;
+          if (T_cell < T_cut) {
+              const Real v2_cell = cons(IM2, k, j, i) / rho_cell;
+              local_momentum_sum += rho_cell * v2_cell; // Mass-weighted velocity
+              local_mass_sum += rho_cell;
+          }
+      },
+      Kokkos::Sum<Real>(sums[0]), // Sum of rho * v2
+      Kokkos::Sum<Real>(sums[1])  // Sum of rho (total cold gas mass)
+  );
 
-    // Calculate average inward velocity at inner Y boundary to update displacement
-    // We do this on host side by reading interior data
-    auto cons = mbd->Get("cons").data;
-    auto cons_h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(), cons);
+#ifdef MPI_PARALLEL
+  // Sum over all processors
+  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 2, MPI_PARTHENON_REAL,
+                                    MPI_SUM, MPI_COMM_WORLD));
+#endif // MPI_PARALLEL
 
-    // Compute average v2 (velocity in Y-direction) at inner boundary
-    // Only include gas cells with temperature < 2e5 K
-    Real v2_avg = 0.0;
-    int count = 0;
-    const Real T_cut = 2e5; // Kelvin
-    for (int k = kb.s; k <= kb.e; k++) {
-      for (int i = ib.s; i <= ib.e; i++) {
-        Real rho_cell = cons_h(IDN, k, jb.s, i);
-        if (rho_cell <= 0.0) continue; // skip invalid
-        Real T_cell = mean_molecular_mass_by_kb * cons_h(IPR, k, jb.s, i) / rho_cell;
-        if (T_cell < T_cut) {
-          Real v2_cell = cons_h(IM2, k, jb.s, i) / rho_cell;
-          v2_avg += v2_cell;
-          count++;
-        }
-      }
-    }
-    if (count > 0) {
-      v2_avg /= static_cast<Real>(count);
-    } else {
-      v2_avg = 0.0; // no cold gas at boundary, no displacement from this block
-    }
+  Real v2_avg = 0.0;
+  if (sums[1] > 0.0) {
+      v2_avg = sums[0] / sums[1]; // Mass-weighted average velocity
+  } else {
+      v2_avg = 0.0; // No cold gas at boundary
+  }
 
-    // Update cumulative displacement (inward is negative)
-    *p_frame_disp += v2_avg * dt;
+  // Update cumulative displacement (inward is negative)
+  frame_disp += v2_avg * dt;
 
-    // Get cell width in Y-direction
-    Real dy = (pmb->pmy_mesh->mesh_size.xmax(X2DIR) - pmb->pmy_mesh->mesh_size.xmin(X2DIR))/pmb->pmy_mesh->GetDefaultBlockSize().nx(parthenon::X2DIR); // cell width
+  // Get cell width in Y-direction from first block
+  auto pmb = md->GetBlockData(0)->GetBlockPointer();
+  Real dy = (pmb->pmy_mesh->mesh_size.xmax(X2DIR) - 
+             pmb->pmy_mesh->mesh_size.xmin(X2DIR)) /
+            pmb->pmy_mesh->GetDefaultBlockSize().nx(parthenon::X2DIR);
 
-    // Check if cumulative displacement exceeds one cell width
-    if (std::abs(*p_frame_disp) >= dy) {
-      // Determine shift direction
-      int num_shifts = static_cast<int>(std::floor(std::abs(*p_frame_disp) / dy));
-      int shift_dir = (*p_frame_disp < 0.0) ? -1 : 1; // -1 for inward, +1 for outward
+  // Check if cumulative displacement exceeds one cell width
+  if (std::abs(frame_disp) >= dy) {
+    // Determine shift direction
+    int num_shifts = static_cast<int>(std::floor(std::abs(frame_disp) / dy));
+    int shift_dir = (frame_disp < 0.0) ? -1 : 1; // -1 for inward, +1 for outward
 
-      // Perform shifts
-      for (int shift = 0; shift < num_shifts; shift++) {
-        if (shift_dir == -1) {
-          // Inward shift: remove last row, add at first row
-          // Shift data: row j ← row j+1 for j = [jb.s, jb.e-1]
-          for (int k = kb.s; k <= kb.e; k++) {
-            for (int j = jb.s; j < jb.e; j++) {
-              for (int i = ib.s; i <= ib.e; i++) {
-                for (int n = 0; n < cons_h.GetDim(0); n++) {
-                  cons_h(n, k, j, i) = cons_h(n, k, j + 1, i);
+    // Perform shifts on device
+    for (int shift = 0; shift < num_shifts; shift++) {
+      if (shift_dir == -1) {
+        // Inward shift: row j ← row j+1 for j = [jb.s, jb.e-1]
+        // Shift all data one row inward
+        const int num_vars = cons_pack.GetDim(4);
+        Kokkos::parallel_for(
+            "InnerBoundary::shift_inward",
+            Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
+                {0, kb.s, jb.s, ib.s},
+                {cons_pack.GetDim(5), kb.e + 1, jb.e, ib.e + 1}
+            ),
+            KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+                auto &cons = cons_pack(b);
+                for (int n = 0; n < num_vars; n++) {
+                  cons(n, k, j, i) = cons(n, k, j + 1, i);
                 }
-              }
             }
-          }
+        );
 
-          // Populate new row at jb.s with profile values
-          for (int k = kb.s; k <= kb.e; k++) {
-            for (int i = ib.s; i <= ib.e; i++) {
-              Real Y = coords.Xc<2>(jb.s);
-              double rhoY = rho_profile_Y(Y, rho0, a, H);
+        // Populate new row at jb.s with profile values
+        Kokkos::parallel_for(
+            "InnerBoundary::populate_inner",
+            Kokkos::MDRangePolicy<Kokkos::Rank<3>>(
+                {0, kb.s, ib.s},
+                {cons_pack.GetDim(5), kb.e + 1, ib.e + 1}
+            ),
+            KOKKOS_LAMBDA(const int &b, const int &k, const int &i) {
+                auto &cons = cons_pack(b);
+                const auto &coords = cons_pack.GetCoords(b);
+                
+                const Real Y = coords.Xc<2>(jb.s);
+                const Real rhoY = rho_profile_Y(Y, rho0, a, H);
 
-              // Set density
-              cons_h(IDN, k, jb.s, i) = rhoY;
+                // Set density
+                cons(IDN, k, jb.s, i) = rhoY;
 
-              // Copy tangential velocities from next interior cell
-              cons_h(IM1, k, jb.s, i) = cons_h(IM1, k, jb.s + 1, i);
-              cons_h(IM3, k, jb.s, i) = cons_h(IM3, k, jb.s + 1, i);
+                // Copy tangential velocities from next interior cell
+                cons(IM1, k, jb.s, i) = cons(IM1, k, jb.s + 1, i);
+                cons(IM3, k, jb.s, i) = cons(IM3, k, jb.s + 1, i);
 
-              // Set normal velocity from nearest interior cell (preserves flow pattern)
-              cons_h(IM2, k, jb.s, i) = cons_h(IM2, k, jb.s + 1, i);
+                // Set normal velocity from nearest interior cell
+                cons(IM2, k, jb.s, i) = cons(IM2, k, jb.s + 1, i);
 
-              // Compute pressure/energy: use temperature from nearest interior cell
-              Real T = cons_h(IPR, k, jb.s + 1, i) / cons_h(IDN, k, jb.s + 1, i);
-              Real ke = 0.5 *
-                        (cons_h(IM1, k, jb.s, i) * cons_h(IM1, k, jb.s, i) +
-                         cons_h(IM2, k, jb.s, i) * cons_h(IM2, k, jb.s, i) +
-                         cons_h(IM3, k, jb.s, i) * cons_h(IM3, k, jb.s, i)) /
-                        rhoY;
-              Real ie = T / gm1; // specific internal energy
-              cons_h(IEN, k, jb.s, i) = rhoY * (ie + 0.5 * ke);
+                // Compute pressure/energy: use temperature from nearest interior cell
+                const Real T = cons(IPR, k, jb.s + 1, i) / cons(IDN, k, jb.s + 1, i);
+                const Real ke = 0.5 *
+                          (cons(IM1, k, jb.s, i) * cons(IM1, k, jb.s, i) +
+                           cons(IM2, k, jb.s, i) * cons(IM2, k, jb.s, i) +
+                           cons(IM3, k, jb.s, i) * cons(IM3, k, jb.s, i)) /
+                          rhoY;
+                const Real ie = T / gm1; // specific internal energy
+                cons(IEN, k, jb.s, i) = rhoY * (ie + ke);
 
-              // Pressure for storage
-              cons_h(IPR, k, jb.s, i) = rhoY * T;
+                // Pressure for storage
+                cons(IPR, k, jb.s, i) = rhoY * T;
             }
-          }
-        } else {
-          // Outward shift: remove first row, add at last row
-          // Shift data: row j ← row j-1 for j = [jb.e, jb.s+1]
-          for (int k = kb.s; k <= kb.e; k++) {
-            for (int j = jb.e; j > jb.s; j--) {
-              for (int i = ib.s; i <= ib.e; i++) {
-                for (int n = 0; n < cons_h.GetDim(0); n++) {
-                  cons_h(n, k, j, i) = cons_h(n, k, j - 1, i);
+        );
+      } else {
+        // Outward shift: row j ← row j-1 for j = [jb.e, jb.s+1]
+        // Shift all data one row outward
+        const int num_vars = cons_pack.GetDim(4);
+        Kokkos::parallel_for(
+            "InnerBoundary::shift_outward",
+            Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
+                {0, kb.s, jb.s + 1, ib.s},
+                {cons_pack.GetDim(5), kb.e + 1, jb.e + 1, ib.e + 1}
+            ),
+            KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+                auto &cons = cons_pack(b);
+                const int j_target = jb.e - (j - jb.s - 1); // Reverse iteration
+                const int j_source = j_target - 1;
+                for (int n = 0; n < num_vars; n++) {
+                  cons(n, k, j_target, i) = cons(n, k, j_source, i);
                 }
-              }
             }
-          }
+        );
 
-          // Populate new row at jb.e with profile values
-          for (int k = kb.s; k <= kb.e; k++) {
-            for (int i = ib.s; i <= ib.e; i++) {
-              Real Y = coords.Xc<2>(jb.e);
-              double rhoY = rho_profile_Y(Y, rho0, a, H);
+        // Populate new row at jb.e with profile values
+        Kokkos::parallel_for(
+            "InnerBoundary::populate_outer",
+            Kokkos::MDRangePolicy<Kokkos::Rank<3>>(
+                {0, kb.s, ib.s},
+                {cons_pack.GetDim(5), kb.e + 1, ib.e + 1}
+            ),
+            KOKKOS_LAMBDA(const int &b, const int &k, const int &i) {
+                auto &cons = cons_pack(b);
+                const auto &coords = cons_pack.GetCoords(b);
+                
+                const Real Y = coords.Xc<2>(jb.e);
+                const Real rhoY = rho_profile_Y(Y, rho0, a, H);
 
-              // Set density
-              cons_h(IDN, k, jb.e, i) = rhoY;
+                // Set density
+                cons(IDN, k, jb.e, i) = rhoY;
 
-              // Copy tangential velocities from nearest interior cell
-              cons_h(IM1, k, jb.e, i) = cons_h(IM1, k, jb.e - 1, i);
-              cons_h(IM3, k, jb.e, i) = cons_h(IM3, k, jb.e - 1, i);
+                // Copy tangential velocities from nearest interior cell
+                cons(IM1, k, jb.e, i) = cons(IM1, k, jb.e - 1, i);
+                cons(IM3, k, jb.e, i) = cons(IM3, k, jb.e - 1, i);
 
-              // Set normal velocity from nearest interior cell
-              cons_h(IM2, k, jb.e, i) = cons_h(IM2, k, jb.e - 1, i);
+                // Set normal velocity from nearest interior cell
+                cons(IM2, k, jb.e, i) = cons(IM2, k, jb.e - 1, i);
 
-              // Compute energy
-              Real T = cons_h(IPR, k, jb.e - 1, i) / cons_h(IDN, k, jb.e - 1, i);
-              Real ke = 0.5 *
-                        (cons_h(IM1, k, jb.e, i) * cons_h(IM1, k, jb.e, i) +
-                         cons_h(IM2, k, jb.e, i) * cons_h(IM2, k, jb.e, i) +
-                         cons_h(IM3, k, jb.e, i) * cons_h(IM3, k, jb.e, i)) /
-                        rhoY;
-              Real ie = T / gm1;
-              cons_h(IEN, k, jb.e, i) = rhoY * (ie + 0.5 * ke);
+                // Compute energy
+                const Real T = cons(IPR, k, jb.e - 1, i) / cons(IDN, k, jb.e - 1, i);
+                const Real ke = 0.5 *
+                          (cons(IM1, k, jb.e, i) * cons(IM1, k, jb.e, i) +
+                           cons(IM2, k, jb.e, i) * cons(IM2, k, jb.e, i) +
+                           cons(IM3, k, jb.e, i) * cons(IM3, k, jb.e, i)) /
+                          rhoY;
+                const Real ie = T / gm1;
+                cons(IEN, k, jb.e, i) = rhoY * (ie + ke);
 
-              // Pressure for storage
-              cons_h(IPR, k, jb.e, i) = rhoY * T;
+                // Pressure for storage
+                cons(IPR, k, jb.e, i) = rhoY * T;
             }
-          }
-        }
+        );
       }
-
-      // Copy back to device
-      cons.DeepCopy(cons_h);
-
-      // Reset displacement counter
-      *p_frame_disp -= shift_dir * num_shifts * dy;
+      
+      // Ensure shifts complete before next iteration
+      Kokkos::fence();
     }
+
+    // Reset displacement counter
+    frame_disp -= shift_dir * num_shifts * dy;
   }
 }
 

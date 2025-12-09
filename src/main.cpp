@@ -100,14 +100,6 @@ int main(int argc, char *argv[]) {
     pman.app_input->InitMeshBlockUserData = stratified_box::SetPhases;
     pman.app_input->MeshBlockUserWorkBeforeOutput = stratified_box::UserWorkBeforeOutput;
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
-<<<<<<< HEAD
-                                              "StratOutflowInnerX2",
-                                              stratified_box::StratOutflowInnerX2);
-    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
-                                              "StratOutflowOuterX2",
-                                              stratified_box::StratOutflowOuterX2);
-  } else if (problem == "stratified_box_simple") {
-=======
                                               "StratNoFlowInnerX2", stratified_box::StratNoFlowInnerX2);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
                                               "StratNoFlowOuterX2", stratified_box::StratNoFlowOuterX2);
@@ -116,25 +108,15 @@ int main(int argc, char *argv[]) {
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
                                               "StratInflowOuterX2", stratified_box::StratInflowOuterX2);
   }else if (problem == "stratified_box_simple") {
->>>>>>> e709364 (Corrected BCs stratified)
     pman.app_input->InitUserMeshData = stratified_box_simple::InitUserMeshData;
     pman.app_input->MeshProblemGenerator = stratified_box_simple::ProblemGenerator;
     Hydro::ProblemSourceUnsplit = stratified_box_simple::StratUnsplitSrcTerm;
     Hydro::ProblemInitPackageData = stratified_box_simple::ProblemInitPackageData;
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
-<<<<<<< HEAD
-                                              "StratOutflowInnerX2",
-                                              stratified_box::StratOutflowInnerX2);
-    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
-                                              "StratOutflowOuterX2",
-                                              stratified_box::StratOutflowOuterX2);
-  } else if (problem == "blast") {
-=======
                                               "StratOutflowInnerX2", stratified_box_simple::StratOutflowInnerX2);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
                                               "StratOutflowOuterX2", stratified_box_simple::StratOutflowOuterX2);
   }else if (problem == "blast") {
->>>>>>> e709364 (Corrected BCs stratified)
     pman.app_input->InitUserMeshData = blast::InitUserMeshData;
     pman.app_input->ProblemGenerator = blast::ProblemGenerator;
     pman.app_input->UserWorkAfterLoop = blast::UserWorkAfterLoop;
