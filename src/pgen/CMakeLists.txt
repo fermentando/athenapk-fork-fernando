@@ -28,5 +28,6 @@ target_sources(athenaPK PRIVATE
     turbulence.cpp
     wtopenrun.cpp
     stratified.cpp
+    stratified_noio.cpp
     stratified_simple.cpp
     )

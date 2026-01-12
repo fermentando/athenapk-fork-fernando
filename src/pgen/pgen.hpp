@@ -84,6 +84,32 @@ TaskStatus ProblemFillTracers(MeshData<Real> *md, const parthenon::SimTime &tm,
 void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt);
 } // namespace stratified_box
 
+namespace stratified_box_noio {
+using namespace parthenon;
+
+void InitUserMeshData(Mesh *mesh, ParameterInput *pin);
+void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md);
+void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
+                         const Real beta_dt);
+void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
+                               const parthenon::Real beta_dt);
+void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg);
+void ProblemInitTracerData(ParameterInput *pin, parthenon::StateDescriptor *pkg);
+void StratInflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
+void StratInflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
+void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
+void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
+void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt);
+void DrivingAndFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm,
+                          const Real dt);
+void SetPhases(MeshBlock *pmb, ParameterInput *pin);
+void UserWorkBeforeOutput(MeshBlock *pmb, ParameterInput *pin,
+                          const parthenon::SimTime &tm);
+TaskStatus ProblemFillTracers(MeshData<Real> *md, const parthenon::SimTime &tm,
+                              const Real dt);
+void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt);
+} // namespace stratified_box
+
 namespace stratified_box_simple {
 using namespace parthenon;
 

@@ -107,6 +107,24 @@ int main(int argc, char *argv[]) {
                                               "StratInflowInnerX2", stratified_box::StratInflowInnerX2);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
                                               "StratInflowOuterX2", stratified_box::StratInflowOuterX2);
+  } else if (problem == "stratified_box_noio") {
+    pman.app_input->InitUserMeshData = stratified_box_noio::InitUserMeshData;
+    pman.app_input->MeshProblemGenerator = stratified_box_noio::ProblemGenerator;
+    Hydro::ProblemSourceUnsplit = stratified_box_noio::StratUnsplitSrcTerm;
+    Hydro::ProblemInitPackageData = stratified_box_noio::ProblemInitPackageData;
+    Tracers::ProblemInitTracerData = stratified_box_noio::ProblemInitTracerData;
+    Tracers::ProblemFillTracers = stratified_box_noio::ProblemFillTracers;
+    Hydro::ProblemSourceFirstOrder = stratified_box_noio::DrivingAndFrameTrack;
+    pman.app_input->InitMeshBlockUserData = stratified_box_noio::SetPhases;
+    pman.app_input->MeshBlockUserWorkBeforeOutput = stratified_box_noio::UserWorkBeforeOutput;
+    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
+                                              "StratNoFlowInnerX2", stratified_box_noio::StratNoFlowInnerX2);
+    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
+                                              "StratNoFlowOuterX2", stratified_box_noio::StratNoFlowOuterX2);
+    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
+                                              "StratInflowInnerX2", stratified_box_noio::StratInflowInnerX2);
+    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
+                                              "StratInflowOuterX2", stratified_box_noio::StratInflowOuterX2);
   }else if (problem == "stratified_box_simple") {
     pman.app_input->InitUserMeshData = stratified_box_simple::InitUserMeshData;
     pman.app_input->MeshProblemGenerator = stratified_box_simple::ProblemGenerator;
