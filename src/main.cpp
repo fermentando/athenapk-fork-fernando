@@ -130,6 +130,10 @@ int main(int argc, char *argv[]) {
     pman.app_input->MeshProblemGenerator = stratified_box_simple::ProblemGenerator;
     Hydro::ProblemSourceUnsplit = stratified_box_simple::StratUnsplitSrcTerm;
     Hydro::ProblemInitPackageData = stratified_box_simple::ProblemInitPackageData;
+        pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
+                                              "StratNoFlowInnerX2", stratified_box_simple::StratNoFlowInnerX2);
+    pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
+                                              "StratNoFlowOuterX2", stratified_box_simple::StratNoFlowOuterX2);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::inner_x2,
                                               "StratOutflowInnerX2", stratified_box_simple::StratOutflowInnerX2);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,

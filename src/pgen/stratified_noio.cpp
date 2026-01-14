@@ -89,7 +89,7 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         auto &prim = prim_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
 
-        auto y_norm = coords.Xc<2>(j) / (a_over_H * H) * code_units_length;
+        auto y_norm = coords.Xc<2>(j) / (a_over_H * H);
         const Real g_z =
             2 * M_PI * G * surface_density * y_norm / std::sqrt(1 + y_norm * y_norm);
 

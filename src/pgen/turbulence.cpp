@@ -47,28 +47,26 @@ using utils::few_modes_ft::FewModesFT;
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
 // we'll use this enum to identify the various vars.
-enum class HstQuan { Ms, Ma, pb, DeltaEcool, ColdMass };
+//----------------------------------------------------------------------------------------
+//! \fn void TurbulenceHst(MeshData<Real> *md)
+//  \brief Hst file initialiser for new variables
 
-// Compute the local sum of either the sonic Mach number,
-// alfvenic Mach number, or plasma beta as specified by `hst_quan`.
+// TODO(?) until we are able to process multiple variables in a single hst function call
+// we'll use this enum to identify the various vars.
+enum class HstQuan { mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout, Ms, Ma, pb };
+
+// Compute the local sum of cloud mass
 template <HstQuan hst_quan>
 Real TurbulenceHst(MeshData<Real> *md) {
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto hydro_pkg = pmb->packages.Get("Hydro");
-  const auto gamma = hydro_pkg->Param<Real>("AdiabaticIndex");
-  const auto mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
-  const auto Tcold = hydro_pkg->Param<Real>("cooling/Tcold");
-
-  if (hst_quan == HstQuan::DeltaEcool &&
-      hydro_pkg->AllParams().hasKey("cooling/total_deltaE_this_cycle")) {
-    return hydro_pkg->Param<Real>("cooling/total_deltaE_this_cycle");
-  } else {
-    return 0;
-  }
-
   const auto fluid = hydro_pkg->Param<Fluid>("fluid");
+  Real mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+  const auto T_cloud_ = 1e4;
+  const auto gamma = hydro_pkg->Param<Real>("AdiabaticIndex");
 
-  const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  const auto &prims_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
 
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
@@ -78,45 +76,102 @@ Real TurbulenceHst(MeshData<Real> *md) {
   // thus, we're only concerned with local sums
   Real sum;
 
-  pmb->par_reduce(
-      "hst_turbulence", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
-        const auto &prim = prim_pack(b);
-        const auto &coords = prim_pack.GetCoords(b);
+  if (hst_quan == HstQuan::mcout || hst_quan == HstQuan::mwout) {
+    IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::outer_x2);
+    IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::outer_x2);
+    IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::outer_x2);
 
-        const auto vel2 = (prim(IV1, k, j, i) * prim(IV1, k, j, i) +
-                           prim(IV2, k, j, i) * prim(IV2, k, j, i) +
-                           prim(IV3, k, j, i) * prim(IV3, k, j, i));
+    auto pmesh = pmb->pmy_mesh;
+    const auto x2max = pmesh->mesh_size.xmax(X2DIR);
 
-        const auto c_s =
-            std::sqrt(gamma * prim(IPR, k, j, i) / prim(IDN, k, j, i)); // speed of sound
+    pmb->par_reduce(
+        "WTopenrun::outflowing_gas", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e,
+        ib.s, ib.e,
+        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+          const auto &prims = prims_pack(b);
+          const auto &cons = cons_pack(b);
+          const auto &coords = prims_pack.GetCoords(b);
+          const Real rho = prims(IDN, k, j, i);
+          const Real My = cons(IM2, k, j, i);
+          const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / rho;
 
-        const auto e_kin = 0.5 * prim(IDN, k, j, i) * vel2;
-
-        if (hst_quan == HstQuan::Ms) { // Ms
-          lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
-        }
-
-        const auto Tgas = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
-        if (hst_quan == HstQuan::ColdMass && Tgas <= Tcold){
-          lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i); 
-        }
-
-        if (fluid == Fluid::glmmhd) {
-          const auto B2 = (prim(IB1, k, j, i) * prim(IB1, k, j, i) +
-                           prim(IB2, k, j, i) * prim(IB2, k, j, i) +
-                           prim(IB3, k, j, i) * prim(IB3, k, j, i));
-
-          const auto e_mag = 0.5 * B2;
-
-          if (hst_quan == HstQuan::Ma) { // Ma
-            lsum += std::sqrt(e_kin / e_mag) * coords.CellVolume(k, j, i);
-          } else if (hst_quan == HstQuan::pb) { // plasma beta
-            lsum += prim(IPR, k, j, i) / e_mag * coords.CellVolume(k, j, i);
+          if (coords.Xc<2>(j) > x2max && My > 0.0) {
+            if (hst_quan == HstQuan::mcout && temp <= 5 * T_cloud_) {
+              const Real mass = rho * coords.CellVolume(k, j, i);
+              lsum += mass;
+            }
+            if (hst_quan == HstQuan::mwout && temp > 5 * T_cloud_ &&
+                temp <= 10 * T_cloud_) {
+              const Real mass = rho * coords.CellVolume(k, j, i);
+              lsum += mass;
+            }
           }
-        }
-      },
-      sum);
+        },
+        sum);
+  }
+
+  else {
+
+    pmb->par_reduce(
+        "WTOpenRun::hst_calc", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
+        ib.e,
+        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+          const auto &cons = cons_pack(b);
+          const auto &prim = prims_pack(b);
+          const auto &coords = prims_pack.GetCoords(b);
+          const Real temp =
+              mean_molecular_mass_by_kb * prim(IPR, k, j, i) / prim(IDN, k, j, i);
+
+          const auto vel2 = (prim(IV1, k, j, i) * prim(IV1, k, j, i) +
+                             prim(IV2, k, j, i) * prim(IV2, k, j, i) +
+                             prim(IV3, k, j, i) * prim(IV3, k, j, i));
+
+          const auto c_s = std::sqrt(gamma * prim(IPR, k, j, i) /
+                                     prim(IDN, k, j, i)); // speed of sound
+
+          const auto e_kin = 0.5 * prim(IDN, k, j, i) * vel2;
+
+          if (hst_quan == HstQuan::Ms) { // Ms
+            lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
+          }
+
+          if (fluid == Fluid::glmmhd) {
+            const auto B2 = (prim(IB1, k, j, i) * prim(IB1, k, j, i) +
+                             prim(IB2, k, j, i) * prim(IB2, k, j, i) +
+                             prim(IB3, k, j, i) * prim(IB3, k, j, i));
+
+            const auto e_mag = 0.5 * B2;
+
+            if (hst_quan == HstQuan::Ma) { // Ma
+              lsum += std::sqrt(e_kin / e_mag) * coords.CellVolume(k, j, i);
+            } else if (hst_quan == HstQuan::pb) { // plasma beta
+              lsum += prim(IPR, k, j, i) / e_mag * coords.CellVolume(k, j, i);
+            }
+          }
+
+          if (temp <= 2 * T_cloud_) {
+
+            if (hst_quan == HstQuan::mc) {
+              lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mcx1) {
+              lsum += cons(IM1, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mcx2) {
+              lsum += cons(IM2, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mcx3) {
+              lsum += cons(IM3, k, j, i) * coords.CellVolume(k, j, i);
+            }
+          }
+          if (temp <= 10 * T_cloud_) {
+            if (hst_quan == HstQuan::mbw) {
+              lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            }
+          }
+        },
+        sum);
+  }
 
   return sum;
 }
@@ -145,24 +200,33 @@ void TurbUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm, const 
 }
 
 void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg) {
-  // Step 1. Enlist history output information
-  auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
+   auto hst_vars = pkg->Param<parthenon::HstVar_list>(parthenon::hist_param_key);
   const auto fluid = pkg->Param<Fluid>("fluid");
 
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    TurbulenceHst<HstQuan::mc>, "mc"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    TurbulenceHst<HstQuan::mc>, "mbw"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    TurbulenceHst<HstQuan::Mcx1>, "Mcx1"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    TurbulenceHst<HstQuan::Mcx2>, "Mcx2"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    TurbulenceHst<HstQuan::Mcx3>, "Mcx3"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    TurbulenceHst<HstQuan::mcout>, "mcout"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    TurbulenceHst<HstQuan::mwout>, "mwout"));
+
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     TurbulenceHst<HstQuan::Ms>, "Ms"));
-  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
-                                                    TurbulenceHst<HstQuan::DeltaEcool>,
-                                                    "DeltaEcool"));
-  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
-                                                    TurbulenceHst<HstQuan::ColdMass>,
-                                                    "ColdMass"));
   if (fluid == Fluid::glmmhd) {
     hst_vars.emplace_back(parthenon::HistoryOutputVar(
         parthenon::UserHistoryOperation::sum, TurbulenceHst<HstQuan::Ma>, "Ma"));
     hst_vars.emplace_back(parthenon::HistoryOutputVar(
         parthenon::UserHistoryOperation::sum, TurbulenceHst<HstQuan::pb>, "plasma_beta"));
   }
+
   pkg->UpdateParam(parthenon::hist_param_key, hst_vars);
 
   // Add a temperature field for easier access within Ascent and history files

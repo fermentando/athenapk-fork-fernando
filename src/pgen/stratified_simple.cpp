@@ -88,7 +88,7 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         auto &prim = prim_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
 
-        auto y_norm = coords.Xc<2>(j) / (a_over_H * H) * code_units_length;
+        auto y_norm = coords.Xc<2>(j) / (a_over_H * H);
         const Real g_z =  2 * M_PI * G * surface_density * y_norm / std::sqrt(1 + y_norm * y_norm);
 
         // Apply g_r as a source term
@@ -133,6 +133,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   const auto H_height = c_s * c_s / g0;              
 
   pkg->AddParam<Real>("H_height", H_height);
+  pkg->AddParam<Real>("gamma", gamma);
 
   const auto t_ff = std::sqrt(2.0 * H_height / g0); 
   
@@ -359,8 +360,58 @@ void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
 
 KOKKOS_INLINE_FUNCTION
 double rho_profile_Y(double Y, double rho0, double a, double H) {
-    const double arg = Y / (a * H);
-    return rho0 * exp(-a * (sqrt(1.0 + arg*arg) - 1.0));
+  const double arg = Y / (a * H);
+  return rho0 * exp(-a * (sqrt(1.0 + arg * arg) - 1.0));
+}
+
+void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
+
+  const auto nb = IndexRange{0, 0};
+  const bool fine = false;
+
+  // Local copies of parameters for device lambda
+  auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
+  auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
+  auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
+  const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
+  const auto gamma = pmb->packages.Get("Hydro")->Param<Real>("gamma");
+  const auto gm1 = gamma - 1.0;
+
+  const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  const auto jg = pmb->cellbounds.GetBoundsJ(IndexDomain::inner_x2);
+
+
+  pmb->par_for_bndry(
+      "StratOutflowInnerX2", nb, IndexDomain::inner_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+          double prsY = 1e6 * rhoY / mbar_over_kb;
+
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+
+
+          // Mirror velocity profile 
+          const auto j_mirror = jb.s + (jg.e - j);
+          cons(IM1,k,j,i) = 0;//rhoY * cons(IM1,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          if (cons(IM2, k, jb.s, i) < 0.) cons(IM2,k,j,i) = 0;//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          else cons(IM2,k,j,i) = cons(IM2, k, jb.s, i);//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM3,k,j,i) = 0;//rhoY * cons(IM3,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+
+          //const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
+          cons(IEN,k,j,i) = prsY / gm1 + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
+          
+      });
 }
 
 void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
@@ -399,6 +450,52 @@ void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse)
 
         Real T = cons(IPR, k, jb.s, i) / cons(IDN, k, jb.s, i);
         cons(IPR, k, j, i) = rhoY * T;
+      });
+}
+
+
+void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
+  auto pmb = mbd->GetBlockPointer();
+  auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
+
+  const auto nb = IndexRange{0, 0};
+  const bool fine = false;
+
+  auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
+  auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
+  auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
+  const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
+  const double a    = bc_a;
+  const double H    = bc_H;
+  const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  const auto jg = pmb->cellbounds.GetBoundsJ(IndexDomain::outer_x2);
+  const auto gamma = pmb->packages.Get("Hydro")->Param<Real>("gamma");
+  const auto gm1 = gamma - 1.0;
+
+  pmb->par_for_bndry(
+      "StratOutflowInnerX2", nb, IndexDomain::outer_x2,
+      parthenon::TopologicalElement::CC, coarse, fine,
+      KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
+          const auto &coordsb = cons_pack.GetCoords();
+          auto &cons = cons_pack;
+          Real Y = coordsb.Xc<2>(j);
+          double rhoY = rho_profile_Y(Y, rho0, a, H);
+          auto prsY = 1e6 * rhoY / mbar_over_kb;
+
+          // Copy tangential velocities from last interior cell
+          cons(IDN,k,j,i) = rhoY;
+
+          // Mirror velocity profile 
+          const auto j_mirror = jb.e - (j - jg.s);
+          cons(IM1,k,j,i) = 0;
+          if (cons(IM2, k, jb.e, i) > 0.) cons(IM2,k,j,i) = 0;//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          else cons(IM2,k,j,i) = cons(IM2, k, jb.e, i);//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          cons(IM3,k,j,i) = 0;
+
+          //const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
+          cons(IEN,k,j,i) = prsY / gm1 + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
+
       });
 }
 

@@ -122,6 +122,8 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
 void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg);
 void StratOutflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
 void StratOutflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
+void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
+void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse);
 
 } // namespace stratified_box_simple
 namespace blast {
