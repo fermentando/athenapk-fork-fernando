@@ -102,7 +102,7 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
 }
 
 KOKKOS_INLINE_FUNCTION
-double rho_profile_Y(double Y, double rho0, double a, double H) {
+double rho_profile_Y(double Y, double rho0, double a, double H, Real code_units_length) {
   const double arg = Y / (a * H);
   return rho0 * exp(-a * (sqrt(1.0 + arg * arg) - 1.0));
 }
@@ -205,35 +205,32 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
   const auto gm1 = gamma - 1.0;
   const auto rhoe_over_rho = T_base / mbar_over_kb / gm1;
 
+  const auto units = hydro_pkg->Param<Units>("units");
+  const auto code_units_length = units.code_length_cgs();
 
 
-  // initialize conserved variables
-  auto &mbd = pmb->meshblock_data.Get();
-  auto &u_dev = mbd->Get("cons").data;
-  auto &coords = pmb->coords;
-  // initializing on host
-  auto u = u_dev.GetHostMirrorAndCopy();
+  // Pack conserved variables and initialize on device
+  auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  const Real rhoe_fac = rhoe_over_rho; // capture-friendly alias
 
-  // Read problem parameters
-  for (int j = jb.s; j <= jb.e; j++) {
-    auto rho_cell = rho_profile_Y(coords.Xc<2>(j), rho0, a, H);
-    PARTHENON_REQUIRE_THROWS(rho_cell > 0,
-                             "Density profile returned negative density at j=" +
-                                 std::to_string(j));
-    auto mom = 0.0;
-    for (int k = kb.s; k <= kb.e; k++) {
-      for (int i = ib.s; i <= ib.e; i++) {
+  pmb->par_for("Init stratified profile", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s,
+               jb.e, ib.s, ib.e,
+               KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
+                 auto &cons = cons_pack(b);
+                 const auto &coords = cons_pack.GetCoords(b);
 
-        u(IDN, k, j, i) = rho_cell;
-        u(IM2, k, j, i) = mom;
-        u(IEN, k, j, i) = rhoe_over_rho * rho_cell + 0.5 * mom * mom / rho_cell;
+                 const Real rho_at_j =
+                     rho_profile_Y(coords.Xc<2>(j), rho0, a, H, code_units_length);
 
-      }
-    }
-  }
+                 cons(IDN, k, j, i) = rho_at_j;
+                 cons(IM1, k, j, i) = 0.0;
+                 cons(IM2, k, j, i) = 0.0;
+                 cons(IM3, k, j, i) = 0.0;
+                 // internal energy term from rhoe_over_rho; kinetic part is zero here
+                 cons(IEN, k, j, i) = rhoe_fac * rho_at_j;
+               });
 
-  // copy initialized vars to device
-  u_dev.DeepCopy(u);
+
   
   const auto fluid = hydro_pkg->Param<Fluid>("fluid");
   const auto x3min = pmesh->mesh_size.xmin(X3DIR);
@@ -298,6 +295,10 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
   const auto jg = pmb->cellbounds.GetBoundsJ(IndexDomain::inner_x2);
 
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto units = hydro_pkg->Param<Units>("units");
+  const auto code_units_length = units.code_length_cgs();
+
 
   pmb->par_for_bndry(
       "StratOutflowInnerX2", nb, IndexDomain::inner_x2,
@@ -307,7 +308,7 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           auto &cons = cons_pack;
 
           Real Y = coordsb.Xc<2>(j);
-          double rhoY = rho_profile_Y(Y, rho0, a, H);
+          double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
           double prsY = 1e6 * rhoY / mbar_over_kb;
 
           // Copy tangential velocities from last interior cell
@@ -345,6 +346,9 @@ void StratInflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   const double H    = bc_H;
 
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto units = hydro_pkg->Param<Units>("units");
+  const auto code_units_length = units.code_length_cgs();
 
   pmb->par_for_bndry(
       "StratOutflowInnerX2", nb, IndexDomain::inner_x2, parthenon::TopologicalElement::CC,
@@ -352,7 +356,7 @@ void StratInflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
         const auto &coordsb = cons_pack.GetCoords();
         auto &cons = cons_pack;
         Real Y = coordsb.Xc<2>(j);
-        double rhoY = rho_profile_Y(Y, rho0, a, H);
+        double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
 
           // Copy tangential velocities from last interior cell
           cons(IDN,k,j,i) = rhoY;
@@ -415,6 +419,10 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   const auto gamma = pmb->packages.Get("Hydro")->Param<Real>("gamma");
   const auto gm1 = gamma - 1.0;
 
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto units = hydro_pkg->Param<Units>("units");
+  const auto code_units_length = units.code_length_cgs();
+
   pmb->par_for_bndry(
       "StratOutflowInnerX2", nb, IndexDomain::outer_x2,
       parthenon::TopologicalElement::CC, coarse, fine,
@@ -422,7 +430,7 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           const auto &coordsb = cons_pack.GetCoords();
           auto &cons = cons_pack;
           Real Y = coordsb.Xc<2>(j);
-          double rhoY = rho_profile_Y(Y, rho0, a, H);
+          double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
           auto prsY = 1e6 * rhoY / mbar_over_kb;
 
           // Copy tangential velocities from last interior cell
@@ -458,6 +466,10 @@ void StratInflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   const double H    = bc_H;
   const auto jb = pmb->cellbounds.GetBoundsJ(IndexDomain::interior);
 
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto units = hydro_pkg->Param<Units>("units");
+  const auto code_units_length = units.code_length_cgs();
+
 
   pmb->par_for_bndry(
       "StratOutflowOuterX2", nb, IndexDomain::inner_x2,
@@ -466,7 +478,7 @@ void StratInflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           const auto &coordsb = cons_pack.GetCoords();
           auto &cons = cons_pack;
           Real Y = coordsb.Xc<2>(j);
-          double rhoY = rho_profile_Y(Y, rho0, a, H);
+          double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
 
           // Copy tangential velocities from last interior cell
           cons(IDN,k,j,i) = rhoY;
@@ -1384,6 +1396,9 @@ void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const R
   const double H = bc_H;
   const double gm1 = gamma - 1.0;
 
+  const auto units = hydro_pkg->Param<Units>("units");
+  const auto code_units_length = units.code_length_cgs();
+
   // Pack all blocks' conserved variables for parallel reduction
   auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
   
@@ -1481,7 +1496,7 @@ void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const R
                 const auto &coords = cons_pack.GetCoords(b);
                 
                 const Real Y = coords.Xc<2>(jb.s);
-                const Real rhoY = rho_profile_Y(Y, rho0, a, H);
+                const Real rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
 
                 // Set density
                 cons(IDN, k, jb.s, i) = rhoY;
@@ -1539,7 +1554,7 @@ void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const R
                 const auto &coords = cons_pack.GetCoords(b);
                 
                 const Real Y = coords.Xc<2>(jb.e);
-                const Real rhoY = rho_profile_Y(Y, rho0, a, H);
+                const Real rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
 
                 // Set density
                 cons(IDN, k, jb.e, i) = rhoY;
