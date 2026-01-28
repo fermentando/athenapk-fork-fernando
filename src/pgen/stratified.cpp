@@ -134,6 +134,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
   pkg->AddParam<Real>("H_height", H_height);
   pkg->AddParam<Real>("rho0", rho0);
+  pkg->AddParam<Real>("T_base", T_base);
 
   // Relevant timescales
   auto t_ff = std::sqrt(2.0 * H_height / g0);
@@ -356,6 +357,7 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
   const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
+  const auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
   const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
   const double a    = bc_a;
   const double H    = bc_H;
@@ -375,7 +377,7 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
 
           Real Y = coordsb.Xc<2>(j);
           double rhoY = rho_profile_Y(Y, rho0, a, H);
-          double prsY = 1e6 * rhoY / mbar_over_kb;
+          double prsY = T_base * rhoY / mbar_over_kb;
 
           // Copy tangential velocities from last interior cell
           cons(IDN,k,j,i) = rhoY;
@@ -474,6 +476,7 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
   const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
+  const auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
   const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
   const double a    = bc_a;
   const double H    = bc_H;
@@ -490,7 +493,7 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           auto &cons = cons_pack;
           Real Y = coordsb.Xc<2>(j);
           double rhoY = rho_profile_Y(Y, rho0, a, H);
-          auto prsY = 1e6 * rhoY / mbar_over_kb;
+          auto prsY = T_base * rhoY / mbar_over_kb;
 
           // Copy tangential velocities from last interior cell
           cons(IDN,k,j,i) = rhoY;
@@ -663,12 +666,12 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
           // increase density according to overdensity
           cons(IDN, k, j, i) *= chi;
           // adjust momentum (so that the velocity remains constant)
-          cons(IM1, k, j, i) *= chi;
-          cons(IM2, k, j, i) *= chi;
-          cons(IM3, k, j, i) *= chi;
+          cons(IM3, k, j, i) = 0;
+          cons(IM1, k, j, i) = 0;
+          cons(IM2, k, j, i) = 0;
           // adjust total energy density (using original rho_e translates to an increase
           // of 1/chi in temperature)
-          cons(IEN, k, j, i) = kin_en_density * chi + rho_e;
+          cons(IEN, k, j, i) = rho_e;
         }
       });
 

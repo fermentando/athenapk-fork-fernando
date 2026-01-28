@@ -209,6 +209,9 @@ class TabularCooling {
   // Temperature ceiling
   parthenon::Real T_ceil_;
 
+  // Lambda at eq temperature for volumetric heating
+  parthenon::Real lambda_eq;
+
   // Maximum number of iterations/subcycles
   unsigned int max_iter_;
 

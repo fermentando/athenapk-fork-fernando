@@ -67,7 +67,9 @@ TabularCooling::TabularCooling(ParameterInput *pin,
   // negative means disabled
   T_floor_ = pin->GetOrAddReal("hydro", "Tfloor", -1.0);
   T_ceil_ = pin->GetOrAddReal("cooling", "Tceil", -1.0);
+  const auto T_eq = pin->GetOrAddReal("cooling", "Teq", -1.0); // default 10^4 K
   printf("This is T_ceil: %g \n", T_ceil_);
+  printf("This is T_eq: %g \n", T_eq);
 
   std::stringstream msg;
 
@@ -229,6 +231,26 @@ TabularCooling::TabularCooling(ParameterInput *pin,
     // Copy host_lambdas into device memory
     Kokkos::deep_copy(lambdas_, host_lambdas);
     Kokkos::deep_copy(temps_, host_temps);
+
+    if (T_eq > 0.0) {
+
+        // Find temperature bin
+        int idx = 0;
+        while ((idx < n_temp_ - 2) && (host_temps(idx + 1) < T_eq)) {
+          idx++;
+        }
+
+        // Log–log interpolation of Lambda(T)
+        const Real logL =
+            std::log(host_lambdas(idx)) +
+            (std::log(host_lambdas(idx + 1)) - std::log(host_lambdas(idx))) *
+                (std::log(T_eq) - std::log(host_temps(idx))) /
+                (std::log(host_temps(idx + 1)) - std::log(host_temps(idx)));
+
+        lambda_eq = std::exp(logL);
+    } else {
+        lambda_eq = 0.0;
+    }
 
     // Coeffs are for intervals, i.e., only n_temp_ - 1 entries
     const auto n_bins = n_temp_ - 1;
@@ -518,6 +540,7 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto temp_cool_floor = std::pow(10.0, log_temp_start_); // low end of cool table
   const auto temp_cool_ceil = std::pow(10.0, log_temp_final_); // high end of cool table
   const auto temp_ceil = ((T_ceil_ < temp_cool_ceil) && (T_ceil_ > 0.)) ? T_ceil_ : temp_cool_ceil;
+  const auto lambda_eq_ = lambda_eq;
 
 
   // Grab some necessary variables
@@ -605,9 +628,19 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
                              (temp_final / temps(idx)) * (tef_adj - Y_k(idx)),
                      1.0 / (1.0 - alpha_k(idx)));
         // Set new temp (at the lowest to the lower end of the cooling table)
-        const auto internal_e_new = temp_new > temp_cool_floor
+        auto internal_e_new = temp_new > temp_cool_floor
                                         ? temp_new / mbar_gm1_over_kb
                                         : temp_cool_floor / mbar_gm1_over_kb;
+
+        // Add volumetric heating towards T_eq if specified
+        if (lambda_eq_ != 0.0) {
+          const Real heating_vol = lambda_eq_ * n_h2_by_rho * rho;
+          PARTHENON_REQUIRE(heating_vol > 0.0,
+                             "TownsendSrcTerm: Negative heating rate towards T_eq.");
+          internal_e_new += heating_vol * dt;
+        }
+
+        // Compute new energy
         cons(IEN, k, j, i) += rho * (internal_e_new - internal_e);
         // Latter technically not required if no other tasks follows before
         // ConservedToPrim conversion, but keeping it for now (better safe than sorry).

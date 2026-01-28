@@ -134,6 +134,7 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
 
   pkg->AddParam<Real>("H_height", H_height);
   pkg->AddParam<Real>("gamma", gamma);
+  pkg->AddParam<Real>("T_base", T_base);
 
   const auto t_ff = std::sqrt(2.0 * H_height / g0); 
   
@@ -375,6 +376,7 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
   const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
   const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
   const double a    = bc_a;
@@ -395,7 +397,7 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
 
           Real Y = coordsb.Xc<2>(j);
           double rhoY = rho_profile_Y(Y, rho0, a, H);
-          double prsY = 1e6 * rhoY / mbar_over_kb;
+          double prsY = T_base * rhoY / mbar_over_kb;
 
           // Copy tangential velocities from last interior cell
           cons(IDN,k,j,i) = rhoY;
@@ -464,6 +466,7 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
   const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
   const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
   const double a    = bc_a;
@@ -481,7 +484,7 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           auto &cons = cons_pack;
           Real Y = coordsb.Xc<2>(j);
           double rhoY = rho_profile_Y(Y, rho0, a, H);
-          auto prsY = 1e6 * rhoY / mbar_over_kb;
+          auto prsY = T_base * rhoY / mbar_over_kb;
 
           // Copy tangential velocities from last interior cell
           cons(IDN,k,j,i) = rhoY;
