@@ -67,11 +67,17 @@ TabularCooling::TabularCooling(ParameterInput *pin,
   // negative means disabled
   T_floor_ = pin->GetOrAddReal("hydro", "Tfloor", -1.0);
   T_ceil_ = pin->GetOrAddReal("cooling", "Tceil", -1.0);
-  const auto T_eq = pin->GetOrAddReal("cooling", "Teq", -1.0); // default 10^4 K
-  printf("This is T_ceil: %g \n", T_ceil_);
-  printf("This is T_eq: %g \n", T_eq);
+  const auto T_eq_ = pin->GetOrAddReal("cooling", "Teq", -1.0);
+
+
 
   std::stringstream msg;
+
+  msg << "This is T_ceil: " << T_ceil_ << std::endl;
+  msg << "This is T_eq: " << T_eq_ << std::endl;
+  std::cout << msg.str();
+
+
 
   /****************************************
    * Read tab file with IOWrapper
@@ -232,25 +238,6 @@ TabularCooling::TabularCooling(ParameterInput *pin,
     Kokkos::deep_copy(lambdas_, host_lambdas);
     Kokkos::deep_copy(temps_, host_temps);
 
-    if (T_eq > 0.0) {
-
-        // Find temperature bin
-        int idx = 0;
-        while ((idx < n_temp_ - 2) && (host_temps(idx + 1) < T_eq)) {
-          idx++;
-        }
-
-        // Log–log interpolation of Lambda(T)
-        const Real logL =
-            std::log(host_lambdas(idx)) +
-            (std::log(host_lambdas(idx + 1)) - std::log(host_lambdas(idx))) *
-                (std::log(T_eq) - std::log(host_temps(idx))) /
-                (std::log(host_temps(idx + 1)) - std::log(host_temps(idx)));
-
-        lambda_eq = std::exp(logL);
-    } else {
-        lambda_eq = 0.0;
-    }
 
     // Coeffs are for intervals, i.e., only n_temp_ - 1 entries
     const auto n_bins = n_temp_ - 1;
@@ -272,6 +259,23 @@ TabularCooling::TabularCooling(ParameterInput *pin,
                         "Need to implement special case for Townsend piecewise fits.");
     }
 
+    // Compute global heating from Teq if specified
+    if (T_eq_ > 0) {
+      auto eq_idx = 0;
+      while ((eq_idx < n_bins - 1) && (host_temps(eq_idx + 1) <= T_eq_)) {
+        eq_idx += 1;
+      }
+      printf("Global heating set to equilibrium at temperature: %e K\n", host_temps(eq_idx));
+      printf("Lambda at eq temperature is: %e in code units, %e in cgs\n", host_lambdas(eq_idx),
+             host_lambdas(eq_idx) / (units.erg() * pow(units.cm(), 3) / units.s()));
+      glob_gamma = host_lambdas(eq_idx) * std::pow(T_eq_ / host_temps(eq_idx), host_townsend_alpha_k(eq_idx));
+    } else {
+      glob_gamma = 0.0;
+    }
+
+    printf("Glob gamma is: %e\n", glob_gamma /  (units.erg() * pow(units.cm(), 3) / units.s()));
+
+
     // Calculate TEF (temporal evolution functions Y_k recursively), (Eq. A6)
     host_townsend_Y_k(n_bins - 1) = 0.0; // Last Y_N = Y(T_ref) = 0
 
@@ -287,6 +291,8 @@ TabularCooling::TabularCooling(ParameterInput *pin,
 
     Kokkos::deep_copy(townsend_alpha_k_, host_townsend_alpha_k);
     Kokkos::deep_copy(townsend_Y_k_, host_townsend_Y_k);
+
+
   }
 
   // Create a lightweight object for computing cooling rates within kernels
@@ -540,7 +546,7 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto temp_cool_floor = std::pow(10.0, log_temp_start_); // low end of cool table
   const auto temp_cool_ceil = std::pow(10.0, log_temp_final_); // high end of cool table
   const auto temp_ceil = ((T_ceil_ < temp_cool_ceil) && (T_ceil_ > 0.)) ? T_ceil_ : temp_cool_ceil;
-  const auto lambda_eq_ = lambda_eq;
+  const auto glob_gamma_ = glob_gamma;
 
 
   // Grab some necessary variables
@@ -557,6 +563,10 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   // Get reference values
   const auto temp_final = std::pow(10.0, log_temp_final_);
   const auto lambda_final = lambda_final_;
+
+
+
+
 
   par_for(
       DEFAULT_LOOP_PATTERN, "TabularCooling::TownsendSrcTerm", DevExecSpace(), 0,
@@ -578,6 +588,7 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
                                SQR(cons(IB3, k, j, i)));
         }
         internal_e /= rho;
+        //printf("Initial internal energy before cooling: %e\n", internal_e);
 
         // If temp is below floor, reset and return
         if (internal_e <= internal_e_floor) {
@@ -590,6 +601,8 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         }
 
         auto temp = mbar_gm1_over_kb * internal_e;
+        //printf("Initial temperature before cooling: %e\n", temp);
+
         // Temperature is above floor (see conditional above) but below cooling table:
         // -> no cooling
         if ((temp < temp_cool_floor) || (temp >= temp_ceil)) {
@@ -632,19 +645,16 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
                                         ? temp_new / mbar_gm1_over_kb
                                         : temp_cool_floor / mbar_gm1_over_kb;
 
-        // Add volumetric heating towards T_eq if specified
-        if (lambda_eq_ != 0.0) {
-          const Real heating_vol = lambda_eq_ * n_h2_by_rho * rho;
-          PARTHENON_REQUIRE(heating_vol > 0.0,
-                             "TownsendSrcTerm: Negative heating rate towards T_eq.");
-          internal_e_new += heating_vol * dt;
-        }
+
+        //Heating from glob_gamma
+        const Real heat_rate = glob_gamma_ * n_h2_by_rho; // erg/g/s
+        internal_e_new += heat_rate * dt;
 
         // Compute new energy
         cons(IEN, k, j, i) += rho * (internal_e_new - internal_e);
         // Latter technically not required if no other tasks follows before
         // ConservedToPrim conversion, but keeping it for now (better safe than sorry).
-        prim(IPR, k, j, i) = rho * internal_e_new * gm1;
+        prim(IPR, k, j, i) = rho * (internal_e_new) * gm1;
       });
 }
 
