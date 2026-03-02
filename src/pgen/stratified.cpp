@@ -278,6 +278,11 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
           u(IM2, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_2] * m_cgs_factor;
           u(IM3, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_3] * m_cgs_factor;
           u(IEN, kb.s + k, jb.s + j, ib.s + i) = ICsdata[index_base_4] * e_cgs_factor;
+          
+          // Init passive scalars
+          for (auto n = nhydro; n < nhydro + nscalars; n++) {
+            u(n, kb.s + k, jb.s + j, ib.s + i) = 0;
+          }
         }
       }
     }
@@ -584,6 +589,9 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
   auto pmb = md->GetBlockData(0)->GetBlockPointer();
   auto pkg = pmb->packages.Get("Hydro");
 
+  const auto nhydro = pkg->Param<int>("nhydro");
+  const auto nscalars = pkg->Param<int>("nscalars");
+
   const auto inject_once_at_time = pkg->Param<Real>("turbulence/inject_once_at_time");
   const auto inject_once_at_cycle = pkg->Param<int>("turbulence/inject_once_at_cycle");
   const auto inject_once_on_restart =
@@ -672,6 +680,10 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
           // adjust total energy density (using original rho_e translates to an increase
           // of 1/chi in temperature)
           cons(IEN, k, j, i) = rho_e;
+                  // Init passive scalars
+          for (auto n = nhydro; n < nhydro + nscalars; n++) {
+            cons(n, k, j, i) = 1.0;
+          }
         }
       });
 
@@ -780,7 +792,7 @@ void Rescale(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
 // we'll use this enum to identify the various vars.
-enum class HstQuan { mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout, Ms, Ma, pb };
+enum class HstQuan { mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout, Ms, Ma, pb, Ncold };
 
 // Compute the local sum of cloud mass
 template <HstQuan hst_quan>
@@ -794,6 +806,9 @@ Real StratHst(MeshData<Real> *md) {
 
   const auto &prims_pack = md->PackVariables(std::vector<std::string>{"prim"});
   const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+
+  const auto nhydro = hydro_pkg->Param<int>("nhydro");
+  const auto nscalars = hydro_pkg->Param<int>("nscalars");
 
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
@@ -891,6 +906,11 @@ Real StratHst(MeshData<Real> *md) {
             if (hst_quan == HstQuan::Mcx3) {
               lsum += cons(IM3, k, j, i) * coords.CellVolume(k, j, i);
             }
+            if (hst_quan == HstQuan::Ncold) {
+              for (int n = nhydro; n < nhydro + 1; n++) {
+                lsum += cons(n, k, j, i) * cons(IDN, k, j, i) *coords.CellVolume(k, j, i);
+              }
+            }
           }
           if (temp <= 10 * T_cloud_) {
             if (hst_quan == HstQuan::mbw) {
@@ -923,6 +943,8 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
                                                     StratHst<HstQuan::mcout>, "mcout"));
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     StratHst<HstQuan::mwout>, "mwout"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::Ncold>, "Ncold"));
 
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     StratHst<HstQuan::Ms>, "Ms"));
