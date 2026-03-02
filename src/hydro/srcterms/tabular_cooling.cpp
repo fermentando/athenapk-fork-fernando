@@ -668,7 +668,7 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
   }
 
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
-
+  const auto units = hydro_pkg->Param<Units>("units");
   const CoolingTableObj cooling_table_obj = cooling_table_obj_;
   const auto gm1 = (hydro_pkg->Param<Real>("AdiabaticIndex") - 1.0);
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
@@ -709,6 +709,10 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
         const Real internal_e = pres / (rho * gm1);
 
         const Real de_dt = cooling_table_obj.DeDt(internal_e, rho);
+
+        if (internal_e == internal_e_floor) {
+          printf("Cooling time floor: %g\n", internal_e / de_dt / units.myr());
+        }
 
         // Compute cooling time
         // If de_dt is zero (temperature is smaller than lower end of cooling table) or
