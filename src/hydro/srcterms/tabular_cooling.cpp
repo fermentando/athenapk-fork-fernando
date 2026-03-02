@@ -675,6 +675,7 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
 
   const Real internal_e_ceil = temp_ceil/ mbar_gm1_over_kb; // specific internal en.
 
+
   // Grab some necessary variables
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
@@ -698,8 +699,15 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
 
         const Real internal_e = pres / (rho * gm1);
 
+        auto temperature = internal_e * mbar_gm1_over_kb;
+        if (temperature <)
+
         const Real de_dt = cooling_table_obj.DeDt(internal_e, rho);
 
+
+        if (internal_e == internal_e_floor) {
+          printf("Cooling time floor: %g\n", internal_e / de_dt / units.myr());
+        }
         // Compute cooling time
         // If de_dt is zero (temperature is smaller than lower end of cooling table) or
         // current temp is below floor, use infinite cooling time

@@ -177,6 +177,15 @@ int main(int argc, char *argv[]) {
     Hydro::ProblemSourceFirstOrder = turbulence::Driving;
     pman.app_input->InitMeshBlockUserData = turbulence::SetPhases;
     pman.app_input->MeshBlockUserWorkBeforeOutput = turbulence::UserWorkBeforeOutput;
+} else if (problem == "turbulence_grav") {
+    pman.app_input->MeshProblemGenerator = turbulence_grav::ProblemGenerator;
+    Hydro::ProblemSourceUnsplit = turbulence_grav::StratUnsplitSrcTerm;
+    Hydro::ProblemInitPackageData = turbulence_grav::ProblemInitPackageData;
+    Tracers::ProblemInitTracerData = turbulence_grav::ProblemInitTracerData;
+    Tracers::ProblemFillTracers = turbulence_grav::ProblemFillTracers;
+    Hydro::ProblemSourceFirstOrder = turbulence_grav::Driving;
+    pman.app_input->InitMeshBlockUserData = turbulence_grav::SetPhases;
+    pman.app_input->MeshBlockUserWorkBeforeOutput = turbulence_grav::UserWorkBeforeOutput;
   } else {
     // parthenon throw error message for the invalid problem
     std::stringstream msg;

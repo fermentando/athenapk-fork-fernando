@@ -3,7 +3,7 @@
 // Copyright (c) 2021-2025, Athena-Parthenon Collaboration. All rights reserved.
 // Licensed under the 3-clause BSD License, see LICENSE file for details
 //========================================================================================
-//! \file turbulence.cpp
+//! \file turbulence_grav.cpp
 //  \brief Problem generator for turbulence generator with only a few modes
 //
 
@@ -35,7 +35,7 @@
 #include "../utils/few_modes_ft.hpp"
 #include "utils/error_checking.hpp"
 
-namespace turbulence {
+namespace turbulence_grav {
 using namespace parthenon::package::prelude;
 using parthenon::DevMemSpace;
 using parthenon::ParArray2D;
@@ -44,6 +44,45 @@ using parthenon::X2DIR;
 using parthenon::X3DIR;
 using utils::few_modes_ft::Complex;
 using utils::few_modes_ft::FewModesFT;
+
+
+// Adding gravity (optional)
+void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
+                               const parthenon::Real beta_dt) {
+  using parthenon::IndexDomain;
+  using parthenon::IndexRange;
+  using parthenon::Real;
+
+  // Grab some necessary variables
+  const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+  auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
+  const auto g_z = hydro_pkg->Param<Real>("g_z");
+
+  parthenon::par_for(
+      DEFAULT_LOOP_PATTERN, "GravitationalFieldSrcTerm", parthenon::DevExecSpace(), 0,
+      cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
+        auto &cons = cons_pack(b);
+        auto &prim = prim_pack(b);
+        const auto &coords = cons_pack.GetCoords(b);
+
+        // Apply g_r as a source term
+        const Real den = prim(IDN, k, j, i);
+        const Real src = beta_dt * den * g_z;
+        cons(IM2, k, j, i) -= src;
+        cons(IEN, k, j, i) -= src * prim(IV2, k, j, i);
+      });
+}
+
+void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
+                         const Real beta_dt) {
+  auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
+  GravitationalFieldSrcTerm(md, beta_dt);
+}
 
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
@@ -442,8 +481,11 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
   const auto gm1 = pin->GetReal("hydro", "gamma") - 1.0;
   const auto p0 = pin->GetReal("problem/turbulence", "p0");
   const auto rho0 = pin->GetReal("problem/turbulence", "rho0");
+  const auto g_z = pin->GetOrAddReal("problem/turbulence", "g", 0.0);
   // Add to hydro pkg
   const auto units = hydro_pkg->Param<Units>("units");
+  hydro_pkg->AddParam<Real>("g_z", g_z *  units.cm_s() / units.s());
+  printf("Gravity g_z in code units = %e\n", g_z *  units.cm_s() / units.s());
   const auto x3min = pmesh->mesh_size.xmin(X3DIR);
   const auto Lx = pmesh->mesh_size.xmax(X1DIR) - pmesh->mesh_size.xmin(X1DIR);
   const auto Ly = pmesh->mesh_size.xmax(X2DIR) - pmesh->mesh_size.xmin(X2DIR);
@@ -1109,4 +1151,4 @@ TaskStatus ProblemFillTracers(MeshData<Real> *md, const parthenon::SimTime &tm,
 
   return TaskStatus::complete;
 }
-} // namespace turbulence
+} // namespace turbulence_grav
