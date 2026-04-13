@@ -792,7 +792,7 @@ void Rescale(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
 // we'll use this enum to identify the various vars.
-enum class HstQuan { mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout, Ms, Ma, pb, Ncold };
+enum class HstQuan { mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout, Ms, Ma, pb, Ncold, MassPosx2, mh, hV, Mhx1, Mhx2, Mhx3 };
 
 // Compute the local sum of cloud mass
 template <HstQuan hst_quan>
@@ -874,8 +874,14 @@ Real StratHst(MeshData<Real> *md) {
 
           const auto e_kin = 0.5 * prim(IDN, k, j, i) * vel2;
 
-          if (hst_quan == HstQuan::Ms) { // Ms
-            lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
+          if (temp > 10 * T_cloud_){
+            if (hst_quan == HstQuan::Ms) { // Ms
+              lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
+            }
+
+            if (hst_quan == HstQuan::hV){
+              lsum += coords.CellVolume(k, j, i);
+            }
           }
 
           if (fluid == Fluid::glmmhd) {
@@ -890,12 +896,15 @@ Real StratHst(MeshData<Real> *md) {
             } else if (hst_quan == HstQuan::pb) { // plasma beta
               lsum += prim(IPR, k, j, i) / e_mag * coords.CellVolume(k, j, i);
             }
-          }
+            }
 
           if (temp <= 2 * T_cloud_) {
 
             if (hst_quan == HstQuan::mc) {
               lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::MassPosx2) {
+              lsum += prim(IDN, k, j, i) * coords.Xc<2>(j) * coords.CellVolume(k, j, i);
             }
             if (hst_quan == HstQuan::Mcx1) {
               lsum += cons(IM1, k, j, i) * coords.CellVolume(k, j, i);
@@ -915,6 +924,21 @@ Real StratHst(MeshData<Real> *md) {
           if (temp <= 10 * T_cloud_) {
             if (hst_quan == HstQuan::mbw) {
               lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            }
+          }
+          if (temp >= 10 * T_cloud_) {
+
+            if (hst_quan == HstQuan::mh) {
+              lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mhx1) {
+              lsum += cons(IM1, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mhx2) {
+              lsum += cons(IM2, k, j, i) * coords.CellVolume(k, j, i);
+            }
+            if (hst_quan == HstQuan::Mhx3) {
+              lsum += cons(IM3, k, j, i) * coords.CellVolume(k, j, i);
             }
           }
         },
@@ -945,6 +969,18 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
                                                     StratHst<HstQuan::mwout>, "mwout"));
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     StratHst<HstQuan::Ncold>, "Ncold"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::MassPosx2>, "MassPosx2"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::mc>, "mh"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::mc>, "hV"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::Mcx1>, "Mhx1"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::Mcx2>, "Mhx2"));
+  hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
+                                                    StratHst<HstQuan::Mcx3>, "Mhx3"));
 
   hst_vars.emplace_back(parthenon::HistoryOutputVar(parthenon::UserHistoryOperation::sum,
                                                     StratHst<HstQuan::Ms>, "Ms"));
@@ -1155,6 +1191,9 @@ void Perturb(MeshData<Real> *md, const Real dt) {
   auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
   auto acc_pack = md->PackVariables(std::vector<std::string>{"acc"});
 
+  const auto mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
+  auto prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+
   Kokkos::Array<Real, 4> sums{{0.0, 0.0, 0.0, 0.0}};
   Kokkos::parallel_reduce(
       "forcing: calc mean momenum",
@@ -1228,6 +1267,49 @@ void Perturb(MeshData<Real> *md, const Real dt) {
         cons(IM1, k, j, i) += qa * acc_0;
         cons(IM2, k, j, i) += qa * acc_1;
         cons(IM3, k, j, i) += qa * acc_2;
+      });
+
+  // Compute average velocity in y direction and subtract it
+  Kokkos::Array<Real, 2> sums_vy{{0.0, 0.0}};
+  Kokkos::parallel_reduce(
+      "calc mean vy",
+      Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
+          {0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e + 1, jb.e + 1, ib.e + 1},
+          {1, 1, 1, ib.e + 1 - ib.s}),
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lvol_sum,
+                    Real &lv_sum) {
+        const auto &coords = cons_pack.GetCoords(b);
+        Real rho = cons_pack(b, IDN, k, j, i);
+        Real P = prim_pack(b, IPR, k, j, i);
+        Real temp = mean_molecular_mass_by_kb * P / rho;
+        if (temp > 1e5) {
+          Real vol = coords.CellVolume(k, j, i);
+          lvol_sum += vol;
+          lv_sum += (cons_pack(b, IM2, k, j, i) / rho) * vol;
+        }
+      },
+      sums_vy[0], sums_vy[1]);
+
+#ifdef MPI_PARALLEL
+  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums_vy.data(), 2, MPI_PARTHENON_REAL,
+                                    MPI_SUM, MPI_COMM_WORLD));
+#endif // MPI_PARALLEL
+
+  Real avg_vy = sums_vy[1] / sums_vy[0];
+
+  pmb->par_for(
+      "subtract mean vy", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
+        auto &cons = cons_pack(b);
+        Real den = cons(IDN, k, j, i);
+        Real P = prim_pack(b, IPR, k, j, i);
+        Real temp = mean_molecular_mass_by_kb * P / den;
+        if (temp > 1e5) {
+          Real v_y = cons(IM2, k, j, i) / den;
+          Real delta_v = avg_vy;
+          cons(IM2, k, j, i) -= den * delta_v;
+          cons(IEN, k, j, i) -= den * delta_v * v_y - 0.5 * den * delta_v * delta_v;
+        }
       });
 }
 

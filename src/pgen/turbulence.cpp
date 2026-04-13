@@ -390,6 +390,10 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
     auto inject_blob_loc = pin->GetVector<Real>("problem/turbulence",
                                                 "inject_blob_loc_" + std::to_string(i));
     pkg->AddParam<>("turbulence/inject_blob_loc_" + std::to_string(i), inject_blob_loc);
+    printf("Blob location is: (%g, %g, %g)\n",
+          inject_blob_loc[0],
+          inject_blob_loc[1],
+          inject_blob_loc[2]);
 
     auto inject_blob_chi =
         pin->GetReal("problem/turbulence", "inject_blob_chi_" + std::to_string(i));
@@ -811,6 +815,7 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
           << " with overdensity " << chi << ".\n\n ";
       std::cout << msg.str();
     }
+
 
     const auto *const error_msg =
         "Blob bounds crossing domain bounds currently not supported.";

@@ -434,6 +434,11 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
         pin->GetReal("problem/turbulence", "inject_blob_chi_" + std::to_string(i));
     pkg->AddParam<>("turbulence/inject_blob_chi_" + std::to_string(i), inject_blob_chi);
   }
+
+  const auto g_z = pin->GetOrAddReal("problem/turbulence", "g", 0.0);
+  // Add to hydro pkg
+  const auto units = pkg->Param<Units>("units");
+  pkg->AddParam<>("g_z", g_z *  units.cm_s() / units.s());
 }
 
 void ProblemInitTracerData(ParameterInput * /*pin*/,
