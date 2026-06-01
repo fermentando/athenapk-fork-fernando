@@ -55,7 +55,7 @@ using utils::few_modes_ft::FewModesFT;
 
 // TODO(?) until we are able to process multiple variables in a single hst function call
 // we'll use this enum to identify the various vars.
-enum class HstQuan { mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout, Ms, Ma, pb };
+enum class HstQuan { mc, mbw, Mcx1, Mcx2, Mcx3, mcout, mwout, Ms, Ma, pb, temperature };
 
 // Compute the local sum of cloud mass
 template <HstQuan hst_quan>
@@ -89,71 +89,96 @@ Real TurbulenceHst(MeshData<Real> *md) {
 
     auto pmesh = pmb->pmy_mesh;
     const auto x2max = pmesh->mesh_size.xmax(X2DIR);
-  }
-  if (hst_quan == HstQuan::mcout || hst_quan == HstQuan::mwout) {
-    IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::outer_x2);
-    IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::outer_x2);
-    IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::outer_x2);
 
-    auto pmesh = pmb->pmy_mesh;
-    const auto x2max = pmesh->mesh_size.xmax(X2DIR);
-  }
-  pmb->par_reduce(
-      "hst_turbulence", 0, prim_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
-        const auto &prim = prim_pack(b);
-        const auto &coords = prim_pack.GetCoords(b);
+    pmb->par_reduce(
+        "WTopenrun::outflowing_gas", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e,
+        ib.s, ib.e,
+        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+          const auto &prims = prims_pack(b);
+          const auto &cons = cons_pack(b);
+          const auto &coords = prims_pack.GetCoords(b);
+          const Real rho = prims(IDN, k, j, i);
+          const Real My = cons(IM2, k, j, i);
+          const Real temp = mean_molecular_mass_by_kb * prims(IPR, k, j, i) / rho;
 
-          const auto vel2 = (prim(IV1, k, j, i) * prim(IV1, k, j, i) +
-                             prim(IV2, k, j, i) * prim(IV2, k, j, i) +
-                             prim(IV3, k, j, i) * prim(IV3, k, j, i));
-
-          const auto c_s = std::sqrt(gamma * prim(IPR, k, j, i) /
-                                     prim(IDN, k, j, i)); // speed of sound
-
-          const auto e_kin = 0.5 * prim(IDN, k, j, i) * vel2;
-
-          if (hst_quan == HstQuan::Ms) { // Ms
-            lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
-          }
-
-          if (fluid == Fluid::glmmhd) {
-            const auto B2 = (prim(IB1, k, j, i) * prim(IB1, k, j, i) +
-                             prim(IB2, k, j, i) * prim(IB2, k, j, i) +
-                             prim(IB3, k, j, i) * prim(IB3, k, j, i));
-
-            const auto e_mag = 0.5 * B2;
-
-            if (hst_quan == HstQuan::Ma) { // Ma
-              lsum += std::sqrt(e_kin / e_mag) * coords.CellVolume(k, j, i);
-            } else if (hst_quan == HstQuan::pb) { // plasma beta
-              lsum += prim(IPR, k, j, i) / e_mag * coords.CellVolume(k, j, i);
+          if (coords.Xc<2>(j) > x2max && My > 0.0) {
+            if (hst_quan == HstQuan::mcout && temp <= 5 * T_cloud_) {
+              const Real mass = rho * coords.CellVolume(k, j, i);
+              lsum += mass;
             }
-          }
-
-          if (temp <= 2 * T_cloud_) {
-
-            if (hst_quan == HstQuan::mc) {
-              lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
-            }
-            if (hst_quan == HstQuan::Mcx1) {
-              lsum += cons(IM1, k, j, i) * coords.CellVolume(k, j, i);
-            }
-            if (hst_quan == HstQuan::Mcx2) {
-              lsum += cons(IM2, k, j, i) * coords.CellVolume(k, j, i);
-            }
-            if (hst_quan == HstQuan::Mcx3) {
-              lsum += cons(IM3, k, j, i) * coords.CellVolume(k, j, i);
-            }
-          }
-          if (temp <= 10 * T_cloud_) {
-            if (hst_quan == HstQuan::mbw) {
-              lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+            if (hst_quan == HstQuan::mwout && temp > 5 * T_cloud_ &&
+                temp <= 10 * T_cloud_) {
+              const Real mass = rho * coords.CellVolume(k, j, i);
+              lsum += mass;
             }
           }
         },
         sum);
-  }
+  } 
+  
+  
+  else {
+
+    pmb->par_reduce(
+        "hst_turbulence", 0, prims_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+        KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lsum) {
+            const auto &prim = prims_pack(b);
+            const auto &coords = prims_pack.GetCoords(b);
+            const auto &cons = cons_pack(b);
+            const Real rho = prim(IDN, k, j, i);
+            const Real My = cons(IM2, k, j, i);
+            const Real temp = mean_molecular_mass_by_kb * prim(IPR, k, j, i) / rho;
+
+            const auto vel2 = (prim(IV1, k, j, i) * prim(IV1, k, j, i) +
+                              prim(IV2, k, j, i) * prim(IV2, k, j, i) +
+                              prim(IV3, k, j, i) * prim(IV3, k, j, i));
+
+            const auto c_s = std::sqrt(gamma * prim(IPR, k, j, i) /
+                                      prim(IDN, k, j, i)); // speed of sound
+
+            const auto e_kin = 0.5 * prim(IDN, k, j, i) * vel2;
+
+            if (hst_quan == HstQuan::Ms) { // Ms
+              lsum += std::sqrt(vel2) / c_s * coords.CellVolume(k, j, i);
+            }
+
+            if (fluid == Fluid::glmmhd) {
+              const auto B2 = (prim(IB1, k, j, i) * prim(IB1, k, j, i) +
+                              prim(IB2, k, j, i) * prim(IB2, k, j, i) +
+                              prim(IB3, k, j, i) * prim(IB3, k, j, i));
+
+              const auto e_mag = 0.5 * B2;
+
+              if (hst_quan == HstQuan::Ma) { // Ma
+                lsum += std::sqrt(e_kin / e_mag) * coords.CellVolume(k, j, i);
+              } else if (hst_quan == HstQuan::pb) { // plasma beta
+                lsum += prim(IPR, k, j, i) / e_mag * coords.CellVolume(k, j, i);
+              }
+            }
+
+            if (temp <= 2 * T_cloud_) {
+
+              if (hst_quan == HstQuan::mc) {
+                lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+              }
+              if (hst_quan == HstQuan::Mcx1) {
+                lsum += cons(IM1, k, j, i) * coords.CellVolume(k, j, i);
+              }
+              if (hst_quan == HstQuan::Mcx2) {
+                lsum += cons(IM2, k, j, i) * coords.CellVolume(k, j, i);
+              }
+              if (hst_quan == HstQuan::Mcx3) {
+                lsum += cons(IM3, k, j, i) * coords.CellVolume(k, j, i);
+              }
+            }
+            if (temp <= 10 * T_cloud_) {
+              if (hst_quan == HstQuan::mbw) {
+                lsum += prim(IDN, k, j, i) * coords.CellVolume(k, j, i);
+              }
+            }
+          },
+          sum);
+    }
 
   return sum;
 }
@@ -937,206 +962,6 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
             // adjust total energy density (using original rho_e translates to an increase
             // of 1/chi in temperature)
             cons(IEN, k, j, i) = rho_e;
-          }
-        });
-  }
-}
-
-void Rescale(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
-  auto pmb = md->GetBlockData(0)->GetBlockPointer();
-  auto pkg = pmb->packages.Get("Hydro");
-
-  const auto rescale_once_at_time = pkg->Param<Real>("turbulence/rescale_once_at_time");
-  const auto rescale_once_at_cycle = pkg->Param<int>("turbulence/rescale_once_at_cycle");
-  const auto rescale_once_on_restart =
-      pkg->Param<bool>("turbulence/rescale_once_on_restart");
-
-  // Check if any condition is met for rescaling
-  if (!((rescale_once_at_time >= tm.time && rescale_once_at_time < tm.time + dt) ||
-        (rescale_once_at_cycle == tm.ncycle) || rescale_once_on_restart)) {
-    return;
-  }
-
-  // Always disable rescaling as the original value doesn't matter
-  pkg->UpdateParam("turbulence/rescale_once_at_time", -1.0);
-  pkg->UpdateParam("turbulence/rescale_once_at_cycle", -1);
-  pkg->UpdateParam("turbulence/rescale_once_on_restart", false);
-
-  const auto rescale_to_rms_Ms = pkg->Param<Real>("turbulence/rescale_to_rms_Ms");
-  PARTHENON_REQUIRE_THROWS(rescale_to_rms_Ms > 0.0, "What's a negative Mach number?");
-
-  if (parthenon::Globals::my_rank == 0) {
-    std::stringstream msg;
-    msg << std::setprecision(2);
-    msg << "\n# Turbulence driver: rescaling to an RMS Ms of " << rescale_to_rms_Ms;
-    msg << " by resetting the temperature.\n\n";
-    std::cout << msg.str();
-  }
-
-  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
-  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
-  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
-
-  auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
-
-  const auto fluid = pkg->Param<Fluid>("fluid");
-  // To fix this, we'd just have to account for the magnetic energy in the reduction
-  PARTHENON_REQUIRE(fluid == Fluid::euler,
-                    "Rescaling only supported for hydro sims at the moment.");
-
-  const auto gamma = pkg->Param<Real>("AdiabaticIndex");
-
-  Real Ms2_sum;
-  Kokkos::parallel_reduce(
-      "turbulence: calc RMS Ms",
-      Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
-          {0, kb.s, jb.s, ib.s}, {cons_pack.GetDim(5), kb.e + 1, jb.e + 1, ib.e + 1},
-          {1, 1, 1, ib.e + 1 - ib.s}),
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i, Real &lMs2_sum) {
-        const auto &coords = cons_pack.GetCoords(b);
-        auto &cons = cons_pack(b);
-
-        const auto kin_en_density = 0.5 *
-                                    (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
-                                     SQR(cons(IM3, k, j, i))) /
-                                    cons(IDN, k, j, i);
-        auto pres = (gamma - 1.0) * (cons(IEN, k, j, i) - kin_en_density);
-        lMs2_sum += 2.0 * kin_en_density / (gamma * pres) * coords.CellVolume(k, j, i);
-      },
-      Ms2_sum);
-
-#ifdef MPI_PARALLEL
-  // Sum the perturbations over all processors
-  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, &Ms2_sum, 1, MPI_PARTHENON_REAL,
-                                    MPI_SUM, MPI_COMM_WORLD));
-#endif // MPI_PARALLEL
-
-  const auto Lx =
-      pmb->pmy_mesh->mesh_size.xmax(X1DIR) - pmb->pmy_mesh->mesh_size.xmin(X1DIR);
-  const auto Ly =
-      pmb->pmy_mesh->mesh_size.xmax(X2DIR) - pmb->pmy_mesh->mesh_size.xmin(X2DIR);
-  const auto Lz =
-      pmb->pmy_mesh->mesh_size.xmax(X3DIR) - pmb->pmy_mesh->mesh_size.xmin(X3DIR);
-  auto norm = SQR(rescale_to_rms_Ms) / (Ms2_sum / (Lx * Ly * Lz));
-
-  pmb->par_for(
-      "Rescale temperature to target rms Ms", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e,
-      jb.s, jb.e, ib.s, ib.e,
-      KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
-        const auto &coords = cons_pack.GetCoords(b);
-        auto &cons = cons_pack(b);
-
-        const auto kin_en_density = 0.5 *
-                                    (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
-                                     SQR(cons(IM3, k, j, i))) /
-                                    cons(IDN, k, j, i);
-
-        auto e = (cons(IEN, k, j, i) - kin_en_density) / cons(IDN, k, j, i);
-
-        cons(IEN, k, j, i) = kin_en_density + e / norm * cons(IDN, k, j, i);
-      });
-}
-
-void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
-  auto pmb = md->GetBlockData(0)->GetBlockPointer();
-  auto pkg = pmb->packages.Get("Hydro");
-
-  const auto inject_once_at_time = pkg->Param<Real>("turbulence/inject_once_at_time");
-  const auto inject_once_at_cycle = pkg->Param<int>("turbulence/inject_once_at_cycle");
-  const auto inject_once_on_restart =
-      pkg->Param<bool>("turbulence/inject_once_on_restart");
-
-  // Check if any condition is met for injecting
-  if (!((inject_once_at_time >= tm.time && inject_once_at_time < tm.time + dt) ||
-        (inject_once_at_cycle == tm.ncycle) || inject_once_on_restart)) {
-    return;
-  }
-
-  // Always disable injecting as the original value doesn't matter
-  pkg->UpdateParam("turbulence/inject_once_at_time", -1.0);
-  pkg->UpdateParam("turbulence/inject_once_at_cycle", -1);
-  pkg->UpdateParam("turbulence/inject_once_on_restart", false);
-
-  const auto inject_n_blobs = pkg->Param<int>("turbulence/inject_n_blobs");
-  PARTHENON_REQUIRE_THROWS(inject_n_blobs > 0, "Need to inject at least one blob");
-
-  for (int n_blob = 0; n_blob < inject_n_blobs; n_blob++) {
-    const auto radius =
-        pkg->Param<Real>("turbulence/inject_blob_radius_" + std::to_string(n_blob));
-    const auto chi =
-        pkg->Param<Real>("turbulence/inject_blob_chi_" + std::to_string(n_blob));
-    const auto loc = pkg->Param<std::vector<Real>>("turbulence/inject_blob_loc_" +
-                                                   std::to_string(n_blob));
-
-    // redef vars for easier capture (std::vector does not work)
-    const auto loc_x = loc[0];
-    const auto loc_y = loc[1];
-    const auto loc_z = loc[2];
-    if (parthenon::Globals::my_rank == 0) {
-      std::stringstream msg;
-      msg << std::setprecision(2);
-      msg << "\n# Turbulence driver: injecting blob number " << n_blob;
-      msg << " at location " << loc_x << " " << loc_y << " " << loc_z
-          << " with overdensity " << chi << ".\n\n ";
-      std::cout << msg.str();
-    }
-
-    const auto *const error_msg =
-        "Blob bounds crossing domain bounds currently not supported.";
-    PARTHENON_REQUIRE_THROWS(loc_x + radius < pmb->pmy_mesh->mesh_size.xmax(X1DIR),
-                             error_msg)
-    PARTHENON_REQUIRE_THROWS(loc_x - radius > pmb->pmy_mesh->mesh_size.xmin(X1DIR),
-                             error_msg)
-    PARTHENON_REQUIRE_THROWS(loc_y + radius < pmb->pmy_mesh->mesh_size.xmax(X2DIR),
-                             error_msg)
-    PARTHENON_REQUIRE_THROWS(loc_y - radius > pmb->pmy_mesh->mesh_size.xmin(X2DIR),
-                             error_msg)
-    PARTHENON_REQUIRE_THROWS(loc_z + radius < pmb->pmy_mesh->mesh_size.xmax(X3DIR),
-                             error_msg)
-    PARTHENON_REQUIRE_THROWS(loc_z - radius > pmb->pmy_mesh->mesh_size.xmin(X3DIR),
-                             error_msg)
-
-    IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
-    IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
-    IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
-
-    auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
-
-    const auto fluid = pkg->Param<Fluid>("fluid");
-    // To fix this, we'd just have to account for the magnetic energy in the reduction
-    PARTHENON_REQUIRE(fluid == Fluid::euler,
-                      "Injecting only supported for hydro sims at the moment.");
-
-    const auto gamma = pkg->Param<Real>("AdiabaticIndex");
-
-    pmb->par_for(
-        "turbulence: inject blob", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e,
-        ib.s, ib.e, KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
-          const auto &coords = cons_pack.GetCoords(b);
-          auto &cons = cons_pack(b);
-
-          const auto x = coords.Xc<1>(i) - loc_x;
-          const auto y = coords.Xc<2>(j) - loc_y;
-          const auto z = coords.Xc<3>(k) - loc_z;
-          const auto r = Kokkos::sqrt(SQR(x) + SQR(y) + SQR(z));
-
-          if (r < radius) {
-            const auto kin_en_density =
-                0.5 *
-                (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
-                 SQR(cons(IM3, k, j, i))) /
-                cons(IDN, k, j, i);
-            auto rho_e = cons(IEN, k, j, i) - kin_en_density;
-
-            // increase density according to overdensity
-            cons(IDN, k, j, i) *= chi;
-            // adjust momentum (so that the velocity remains constant)
-            cons(IM1, k, j, i) *= chi;
-            cons(IM2, k, j, i) *= chi;
-            cons(IM3, k, j, i) *= chi;
-            // adjust total energy density (using original rho_e translates to an increase
-            // of 1/chi in temperature)
-            cons(IEN, k, j, i) = kin_en_density * chi + rho_e;
           }
         });
   }

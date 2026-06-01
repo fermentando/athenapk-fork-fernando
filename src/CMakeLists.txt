@@ -30,7 +30,7 @@ add_executable(
 
 add_subdirectory(pgen)
 if (ADIOS2_FOUND)
-    target_link_libraries(athenaPK PRIVATE parthenon adios2::cxx11_mpi MPI::MPI_C)
+    target_link_libraries(athenaPK PRIVATE parthenon adios2::cxx11_mpi)
 else()
   target_link_libraries(athenaPK PRIVATE parthenon)
 endif()

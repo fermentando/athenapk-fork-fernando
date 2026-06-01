@@ -14,5 +14,15 @@ fi
 
 echo "Building dir: $build_dir"
 
-cmake -S. -B"$build_dir"   -DKokkos_ARCH_ZEN4=ON  -DKokkos_ENABLE_HIP=ON -DKokkos_ARCH_AMD_GFX942_APU=ON -DCMAKE_CXX_COMPILER=hipcc -DPARTHENON_DISABLE_HDF5_COMPRESSION=ON -DCMAKE_PREFIX_PATH='/u/ferhi/Packages/adios2-build'
+cmake -S. -B"$build_dir" \
+  -DCMAKE_CXX_COMPILER=amdclang++ -DCMAKE_C_COMPILER=amdclang \
+  -DPARTHENON_ENABLE_PYTHON_MODULE_CHECK=OFF \
+  -DKokkos_ARCH_ZEN4=ON  \
+  -DKokkos_ENABLE_HIP=ON \
+  -DKokkos_ARCH_AMD_GFX942_APU=ON \
+  -DPARTHENON_DISABLE_HDF5_COMPRESSION=ON \
+  -DCMAKE_Fortran_COMPILER=gfortran
+  #-DCMAKE_INSTALL_PREFIX=$HOME/Packages/kokkos-tools \
+  #-DHDF5_ROOT=$HDF5_ROOT 
+
 cmake --build "$build_dir" -j 8
