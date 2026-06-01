@@ -145,6 +145,12 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
       }
       pib = pib->pnext; // move to next input block name
     } */
+    auto blocks = pin->GetBlockNamesWithPrefix("parthenon/output");
+    for (const auto &block_name : blocks) {
+      // Use block_name with standard Get methods
+      auto dt = pin->GetReal(block_name, "dt");
+      pin->SetReal(block_name, "dt", dt * t_cc);
+    }
 
     msg << "## Interpreted time limits (partenon/time/tlim and dt for outputs) as in "
            "multiples of the cloud crushing time."

@@ -29,9 +29,4 @@ add_executable(
 )
 
 add_subdirectory(pgen)
-if (ADIOS2_FOUND)
-    target_link_libraries(athenaPK PRIVATE parthenon adios2::cxx11_mpi)
-    target_include_directories(athenaPK PRIVATE $<TARGET_PROPERTY:adios::cxx11_mpi,INTERFACE_INCLUDE_DIRECTORIES> )
-else()
-  target_link_libraries(athenaPK PRIVATE parthenon)
-endif()
+target_link_libraries(athenaPK PRIVATE parthenon adios2)
