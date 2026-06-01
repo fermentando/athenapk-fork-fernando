@@ -21,8 +21,6 @@ cmake -S. -B"$build_dir" \
   -DKokkos_ENABLE_HIP=ON \
   -DKokkos_ARCH_AMD_GFX942_APU=ON \
   -DPARTHENON_DISABLE_HDF5_COMPRESSION=ON \
-  -DCMAKE_Fortran_COMPILER=gfortran
-  #-DCMAKE_INSTALL_PREFIX=$HOME/Packages/kokkos-tools \
-  #-DHDF5_ROOT=$HDF5_ROOT 
+  -DADIOS2_USE_Fortran=ON
 
 cmake --build "$build_dir" -j 8
