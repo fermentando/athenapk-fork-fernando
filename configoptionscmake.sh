@@ -12,5 +12,8 @@ fi
 
 echo "Building dir: $build_dir"
 
-cmake -S. -B"$build_dir" -DKokkos_ARCH_SKX=ON -DKokkos_ENABLE_CUDA=ON -DKokkos_ARCH_VOLTA70=ON -DHDF5_ROOT=$CONDA_PREFIX -DHDF5_LIBRARIES=$CONDA_PREFIX/ -DPython3_EXECUTABLE=$CONDA_PREFIX/bin/python -DCMAKE_PREFIX_PATH=/home/fernando/Packages/adios2-build
-cmake --build "$build_dir" -j 8
+cmake -S . -B build-gpu \
+ -DKokkos_ARCH_SKX=ON   -DKokkos_ENABLE_CUDA=ON   -DKokkos_ARCH_AMPERE80=ON   -DPARTHENON_ENABLE_HOST_COMM_BUFFERS=ON  \
+  -DADIOS2_DIR=$HOME/Packages/adios2-install/lib64/cmake/adios2   -DCMAKE_CXX_STANDARD=17   -DCMAKE_CXX_COMPILER=$(which g++) \
+    -DCMAKE_CUDA_COMPILER=$(which nvcc) -DPARTHENON_ENABLE_PYTHON_MODULE_CHECK=OFF
+cmake --build build-gpu -j 8

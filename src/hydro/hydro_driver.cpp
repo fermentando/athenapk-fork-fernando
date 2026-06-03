@@ -524,10 +524,15 @@ TaskCollection HydroDriver::MakeTaskCollection(BlockList_t &blocks, int stage) {
                      integrator->beta[stage - 1] * integrator->dt);
     }
 
+    // Robust boundary treatment: enforce inflow-only (no outward mass flux) at
+    // physical X2 boundaries by directly clamping computed face fluxes.
+    auto inflow_only_flux_diode =
+      tl.AddTask(first_order_flux_correct, Hydro::ApplyInflowOnlyFluxDiode, mu0, tm);
+
     auto send_flx =
-        tl.AddTask(first_order_flux_correct, parthenon::LoadAndSendFluxCorrections, mu0);
+      tl.AddTask(inflow_only_flux_diode, parthenon::LoadAndSendFluxCorrections, mu0);
     auto recv_flx = tl.AddTask(start_flxcor_recv, parthenon::ReceiveFluxCorrections, mu0);
-    auto set_flx = tl.AddTask(recv_flx | first_order_flux_correct,
+    auto set_flx = tl.AddTask(recv_flx | inflow_only_flux_diode,
                               parthenon::SetFluxCorrections, mu0);
 
     // compute the divergence of fluxes of conserved variables

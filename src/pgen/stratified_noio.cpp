@@ -59,6 +59,8 @@ using utils::few_modes_ft::FewModesFT;
 bool drive_turbulence;
 Real d_cgs_factor, m_cgs_factor, e_cgs_factor;
 Real c_s;
+Real cooling_start_time;
+bool bc_transition_logged;
 int n_ghosts;
 
 void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
@@ -107,6 +109,27 @@ double rho_profile_Y(double Y, double rho0, double a, double H, Real code_units_
   return rho0 * exp(-a * (sqrt(1.0 + arg * arg) - 1.0));
 }
 
+KOKKOS_INLINE_FUNCTION
+Real BoundarySpongeWeight(const Real y, const Real y_min, const Real y_max,
+                          const Real sponge_width) {
+  if (sponge_width <= 0.0) return 0.0;
+
+  const Real d_inner = y - y_min;
+  const Real d_outer = y_max - y;
+  Real w_inner = 0.0;
+  Real w_outer = 0.0;
+
+  if (d_inner < sponge_width) {
+    const Real x = 1.0 - d_inner / sponge_width;
+    w_inner = x * x;
+  }
+  if (d_outer < sponge_width) {
+    const Real x = 1.0 - d_outer / sponge_width;
+    w_outer = x * x;
+  }
+  return (w_inner > w_outer) ? w_inner : w_outer;
+}
+
 //========================================================================================
 //! \fn void ProblemInitPackageData(ParameterInput *pin, parthenon::State *hydro_pkg)
 //  \brief Init package data from parameter input
@@ -126,6 +149,8 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   auto T_base = pin->GetReal("problem/stratified_box", "T_base");
   auto T_cloud = pin->GetReal("problem/stratified_box", "T_cloud");
   drive_turbulence = pin->GetOrAddBoolean("problem/turbulence", "drive_turbulence", true);
+  cooling_start_time = pin->GetOrAddReal("cooling", "start_time", 0.0);
+  bc_transition_logged = (cooling_start_time <= 0.0);
   n_ghosts = pin->GetOrAddInteger("mesh", "nghost", 4);
 
   pkg->AddParam<Real>("a_over_H", a_over_H);
@@ -265,7 +290,13 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
 
 void StratUnsplitSrcTerm(MeshData<Real> *md, const parthenon::SimTime &tm,
                          const Real beta_dt) {
-  auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
+  if (!bc_transition_logged && tm.time >= cooling_start_time) {
+    bc_transition_logged = true;
+    if (parthenon::Globals::my_rank == 0) {
+      std::cout << "\n# Boundary switch: X2 boundaries changed from reflective to noflow at t="
+                << tm.time << " (cooling/start_time=" << cooling_start_time << ")\n";
+    }
+  }
   GravitationalFieldSrcTerm(md, beta_dt);
 }
 
@@ -299,6 +330,8 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto hydro_pkg = pmb->packages.Get("Hydro");
   const auto units = hydro_pkg->Param<Units>("units");
   const auto code_units_length = units.code_length_cgs();
+  const auto sim_time = hydro_pkg->Param<Real>("simulation_time_for_bcs");
+  const bool use_reflective = (sim_time < stratified_box_noio::cooling_start_time);
 
 
   pmb->par_for_bndry(
@@ -307,6 +340,16 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
       KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
           const auto &coordsb = cons_pack.GetCoords();
           auto &cons = cons_pack;
+
+          if (use_reflective) {
+            const auto j_mirror = jb.s + (jg.e - j);
+            cons(IDN, k, j, i) = cons(IDN, k, j_mirror, i);
+            cons(IM1, k, j, i) = cons(IM1, k, j_mirror, i);
+            cons(IM2, k, j, i) = -cons(IM2, k, j_mirror, i);
+            cons(IM3, k, j, i) = cons(IM3, k, j_mirror, i);
+            cons(IEN, k, j, i) = cons(IEN, k, j_mirror, i);
+            return;
+          }
 
           Real Y = coordsb.Xc<2>(j);
           double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
@@ -317,11 +360,16 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
 
 
           // Mirror velocity profile 
-          const auto j_mirror = jb.s + (jg.e - j);
-          cons(IM1,k,j,i) = 0;//rhoY * cons(IM1,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          if (cons(IM2, k, jb.s, i) < 0.) cons(IM2,k,j,i) = 0;//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          else cons(IM2,k,j,i) = cons(IM2, k, jb.s, i);//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          cons(IM3,k,j,i) = 0;//rhoY * cons(IM3,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
+          const Real den_i = fmax(cons(IDN, k, jb.s, i), static_cast<Real>(1e-20));
+          const Real v1_i = cons(IM1, k, jb.s, i) / den_i;
+          const Real v2_i = cons(IM2, k, jb.s, i) / den_i;
+          const Real v3_i = cons(IM3, k, jb.s, i) / den_i;
+
+          // No inflow at inner X2 boundary: clamp normal velocity if it points inward.
+          const Real v2_b = (v2_i < 0.0) ? 0.0 : v2_i;
+          cons(IM1,k,j,i) = rhoY * v1_i;
+          cons(IM2,k,j,i) = rhoY * v2_b;
+          cons(IM3,k,j,i) = rhoY * v3_i;
 
           //const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
           cons(IEN,k,j,i) = prsY / gm1 + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
@@ -424,6 +472,8 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto hydro_pkg = pmb->packages.Get("Hydro");
   const auto units = hydro_pkg->Param<Units>("units");
   const auto code_units_length = units.code_length_cgs();
+  const auto sim_time = hydro_pkg->Param<Real>("simulation_time_for_bcs");
+  const bool use_reflective = (sim_time < stratified_box_noio::cooling_start_time);
 
   pmb->par_for_bndry(
       "StratOutflowInnerX2", nb, IndexDomain::outer_x2,
@@ -431,6 +481,17 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
       KOKKOS_LAMBDA(const int &, const int &k, const int &j, const int &i) {
           const auto &coordsb = cons_pack.GetCoords();
           auto &cons = cons_pack;
+
+          if (use_reflective) {
+            const auto j_mirror = jb.e - (j - jg.s);
+            cons(IDN, k, j, i) = cons(IDN, k, j_mirror, i);
+            cons(IM1, k, j, i) = cons(IM1, k, j_mirror, i);
+            cons(IM2, k, j, i) = -cons(IM2, k, j_mirror, i);
+            cons(IM3, k, j, i) = cons(IM3, k, j_mirror, i);
+            cons(IEN, k, j, i) = cons(IEN, k, j_mirror, i);
+            return;
+          }
+
           Real Y = coordsb.Xc<2>(j);
           double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
           auto prsY = T_base * rhoY / mbar_over_kb;
@@ -439,11 +500,16 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           cons(IDN,k,j,i) = rhoY;
 
           // Mirror velocity profile 
-          const auto j_mirror = jb.e - (j - jg.s);
-          cons(IM1,k,j,i) = 0;
-          if (cons(IM2, k, jb.e, i) > 0.) cons(IM2,k,j,i) = 0;//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          else cons(IM2,k,j,i) = cons(IM2, k, jb.e, i);//rhoY * cons(IM2,k,j_mirror,i) / cons(IDN,k,j_mirror,i);
-          cons(IM3,k,j,i) = 0;
+          const Real den_i = fmax(cons(IDN, k, jb.e, i), static_cast<Real>(1e-20));
+          const Real v1_i = cons(IM1, k, jb.e, i) / den_i;
+          const Real v2_i = cons(IM2, k, jb.e, i) / den_i;
+          const Real v3_i = cons(IM3, k, jb.e, i) / den_i;
+
+          // No inflow at outer X2 boundary: clamp normal velocity if it points inward.
+          const Real v2_b = (v2_i > 0.0) ? 0.0 : v2_i;
+          cons(IM1,k,j,i) = rhoY * v1_i;
+          cons(IM2,k,j,i) = rhoY * v2_b;
+          cons(IM3,k,j,i) = rhoY * v3_i;
 
           //const auto e = (cons(IEN, k, j_mirror, i)  - 0.5 * ( SQR(cons(IM1,k,j_mirror,i)) + SQR(cons(IM2,k,j_mirror,i)) + SQR(cons(IM3,k,j_mirror,i)) ) / cons(IDN, k, j_mirror, i)) / cons(IDN, k, j_mirror, i);
           cons(IEN,k,j,i) = prsY / gm1 + 0.5 * ( SQR(cons(IM1,k,j,i)) + SQR(cons(IM2,k,j,i)) + SQR(cons(IM3,k,j,i)) ) / rhoY;
@@ -610,12 +676,12 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
           // increase density according to overdensity
           cons(IDN, k, j, i) *= chi;
           // adjust momentum (so that the velocity remains constant)
-          cons(IM1, k, j, i) *= chi;
-          cons(IM2, k, j, i) *= chi;
-          cons(IM3, k, j, i) *= chi;
+          cons(IM1, k, j, i) = 0;
+          cons(IM2, k, j, i) = 0;
+          cons(IM3, k, j, i) = 0;
           // adjust total energy density (using original rho_e translates to an increase
           // of 1/chi in temperature)
-          cons(IEN, k, j, i) = kin_en_density * chi + rho_e;
+          cons(IEN, k, j, i) = rho_e;
         }
       });
 
@@ -899,6 +965,14 @@ void ProblemInitPackageData(ParameterInput *pin, parthenon::StateDescriptor *pkg
       pin->GetReal("problem/turbulence", "accel_rms"); // turbulence amplitude
   pkg->AddParam<>("turbulence/accel_rms", accel_rms);
 
+    // Boundary sponge near X2 edges: width in code length units, damping in 1/code_time.
+    auto sponge_width =
+      pin->GetOrAddReal("problem/turbulence", "sponge_width", 0.0);
+    auto sponge_damp_rate =
+      pin->GetOrAddReal("problem/turbulence", "sponge_damp_rate", 0.0);
+    pkg->AddParam<>("turbulence/sponge_width", sponge_width);
+    pkg->AddParam<>("turbulence/sponge_damp_rate", sponge_damp_rate);
+
   auto t_corr =
       pin->GetReal("problem/turbulence", "corr_time"); // forcing autocorrelation time
   pkg->AddParam<>("turbulence/t_corr", t_corr);
@@ -1123,7 +1197,11 @@ void Perturb(MeshData<Real> *md, const Real dt) {
       pmb->pmy_mesh->mesh_size.xmax(X2DIR) - pmb->pmy_mesh->mesh_size.xmin(X2DIR);
   const auto Lz =
       pmb->pmy_mesh->mesh_size.xmax(X3DIR) - pmb->pmy_mesh->mesh_size.xmin(X3DIR);
+    const auto y_min = pmb->pmy_mesh->mesh_size.xmin(X2DIR);
+    const auto y_max = pmb->pmy_mesh->mesh_size.xmax(X2DIR);
   const auto accel_rms = hydro_pkg->Param<Real>("turbulence/accel_rms");
+    const auto sponge_width = hydro_pkg->Param<Real>("turbulence/sponge_width");
+    const auto sponge_damp_rate = hydro_pkg->Param<Real>("turbulence/sponge_damp_rate");
   auto norm = accel_rms / std::sqrt(sums[0] / (Lx * Ly * Lz));
 
   pmb->par_for(
@@ -1131,15 +1209,20 @@ void Perturb(MeshData<Real> *md, const Real dt) {
       ib.e, KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
         auto &cons = cons_pack(b);
         auto &acc = acc_pack(b);
+        const auto &coords = cons_pack.GetCoords(b);
+
+        const Real y = coords.Xc<2>(j);
+        const Real sponge_w = BoundarySpongeWeight(y, y_min, y_max, sponge_width);
+        const Real forcing_fac = 1.0 - sponge_w;
 
         auto &acc_0 = acc(0, k, j, i);
         auto &acc_1 = acc(1, k, j, i);
         auto &acc_2 = acc(2, k, j, i);
 
         // normalizing accel field here so that the actual values are used in the output
-        acc_0 *= norm;
-        acc_1 *= norm;
-        acc_2 *= norm;
+        acc_0 *= norm * forcing_fac;
+        acc_1 *= norm * forcing_fac;
+        acc_2 *= norm * forcing_fac;
 
         Real qa = dt * cons(IDN, k, j, i);
         cons(IEN, k, j, i) +=
@@ -1150,6 +1233,14 @@ void Perturb(MeshData<Real> *md, const Real dt) {
         cons(IM1, k, j, i) += qa * acc_0;
         cons(IM2, k, j, i) += qa * acc_1;
         cons(IM3, k, j, i) += qa * acc_2;
+
+        if (sponge_w > 0.0 && sponge_damp_rate > 0.0) {
+          const Real damp = fmax(static_cast<Real>(0.0),
+                                 1.0 - dt * sponge_damp_rate * sponge_w);
+          cons(IM1, k, j, i) *= damp;
+          cons(IM2, k, j, i) *= damp;
+          cons(IM3, k, j, i) *= damp;
+        }
       });
 }
 

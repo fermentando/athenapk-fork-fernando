@@ -102,6 +102,9 @@ Real CalculateGlobalMinDx(MeshData<Real> *md) {
 void PreStepMeshUserWorkInLoop(Mesh *pmesh, ParameterInput *pin, SimTime &tm) {
   auto hydro_pkg = pmesh->packages.Get("Hydro");
 
+  // Make the current simulation time accessible in callbacks that do not receive SimTime.
+  hydro_pkg->UpdateParam("simulation_time_for_bcs", tm.time);
+
   // Calculate hyperbolic divergence cleaning speed
   // TODO(pgrete) Calculating mindx is only required after remeshing. Need to
   // find a clean solution for this one-off global reduction.
@@ -262,6 +265,80 @@ TaskStatus AddSplitSourcesStrang(MeshData<Real> *md, const SimTime &tm) {
   if (ProblemSourceStrangSplit != nullptr) {
     ProblemSourceStrangSplit(md, tm, tm.dt);
   }
+  return TaskStatus::complete;
+}
+
+TaskStatus ApplyInflowOnlyFluxDiode(std::shared_ptr<MeshData<Real>> &md,
+                                    const SimTime &tm) {
+  auto pmb0 = md->GetBlockData(0)->GetBlockPointer();
+  auto hydro_pkg = pmb0->packages.Get("Hydro");
+
+  if (!hydro_pkg->Param<bool>("inflow_only_no_outflow_x2")) {
+    return TaskStatus::complete;
+  }
+
+  // Keep reflective phase untouched when cooling/start_time is used to switch BCs.
+  if (hydro_pkg->AllParams().hasKey("cooling_start_time") &&
+      tm.time < hydro_pkg->Param<Real>("cooling_start_time")) {
+    return TaskStatus::complete;
+  }
+
+  std::vector<parthenon::MetadataFlag> flags_ind({Metadata::Independent});
+  auto cons_in = md->PackVariablesAndFluxes(flags_ind);
+  const int nvar = cons_in.GetDim(4);
+
+  using BF = parthenon::BoundaryFace;
+  const int inner_x2 = static_cast<int>(BF::inner_x2);
+  const int outer_x2 = static_cast<int>(BF::outer_x2);
+
+  for (int b = 0; b < md->NumBlocks(); ++b) {
+    auto pmb = md->GetBlockData(b)->GetBlockPointer();
+    auto ib = md->GetBlockData(b)->GetBoundsI(IndexDomain::interior);
+    auto jb = md->GetBlockData(b)->GetBoundsJ(IndexDomain::interior);
+    auto kb = md->GetBlockData(b)->GetBoundsK(IndexDomain::interior);
+
+    const auto bfi = pmb->boundary_flag[inner_x2];
+    const auto bfo = pmb->boundary_flag[outer_x2];
+    const bool has_inner_phys =
+      (bfi != parthenon::BoundaryFlag::block &&
+       bfi != parthenon::BoundaryFlag::periodic &&
+       bfi != parthenon::BoundaryFlag::undef);
+    const bool has_outer_phys =
+      (bfo != parthenon::BoundaryFlag::block &&
+       bfo != parthenon::BoundaryFlag::periodic &&
+       bfo != parthenon::BoundaryFlag::undef);
+
+    if (has_inner_phys) {
+      const int jf = jb.s;
+      parthenon::par_for(
+          DEFAULT_LOOP_PATTERN, "InflowOnlyFluxDiodeInnerX2", parthenon::DevExecSpace(),
+          b, b, kb.s, kb.e, jf, jf, ib.s, ib.e,
+          KOKKOS_LAMBDA(const int bb, const int k, const int j, const int i) {
+            auto &cons = cons_in(bb);
+            if (cons.flux(IV2, IDN, k, j, i) < 0.0) {
+              for (int n = 0; n < nvar; ++n) {
+                cons.flux(IV2, n, k, j, i) = 0.0;
+              }
+            }
+          });
+    }
+
+    if (has_outer_phys) {
+      const int jf = jb.e + 1;
+      parthenon::par_for(
+          DEFAULT_LOOP_PATTERN, "InflowOnlyFluxDiodeOuterX2", parthenon::DevExecSpace(),
+          b, b, kb.s, kb.e, jf, jf, ib.s, ib.e,
+          KOKKOS_LAMBDA(const int bb, const int k, const int j, const int i) {
+            auto &cons = cons_in(bb);
+            if (cons.flux(IV2, IDN, k, j, i) > 0.0) {
+              for (int n = 0; n < nvar; ++n) {
+                cons.flux(IV2, n, k, j, i) = 0.0;
+              }
+            }
+          });
+    }
+  }
+
   return TaskStatus::complete;
 }
 
@@ -731,6 +808,11 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
     
   const Real cooling_start_time = pin->GetOrAddReal("cooling", "start_time", 0.0);
   pkg->AddParam<>("cooling_start_time", cooling_start_time);
+  pkg->AddParam<Real>("simulation_time_for_bcs", 0.0, Params::Mutability::Mutable);
+  const auto inflow_only_no_outflow_x2 =
+      pin->GetOrAddBoolean("hydro", "inflow_only_no_outflow_x2", false);
+  pkg->AddParam<bool>("inflow_only_no_outflow_x2", inflow_only_no_outflow_x2,
+                      Params::Mutability::Mutable);
 
   auto cooling = Cooling::none;
   if (enable_cooling_str == "tabular") {
