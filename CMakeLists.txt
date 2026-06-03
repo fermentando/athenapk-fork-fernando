@@ -15,11 +15,11 @@ else()
     "For further directions open an issue on GitLab.")
 endif()
 
-project(athenaPK LANGUAGES C CXX)
+project(athenaPK VERSION 26.05 LANGUAGES CXX)
 
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 # make paths in target_source() absolute
 # used for sources in src/pgen folder
@@ -64,10 +64,13 @@ if (NOT PARTHENON_DISABLE_MPI)
 endif()
 
 if (NOT ATHENAPK_DISABLE_ADIOS2)
-  find_package(ADIOS2 REQUIRED)
-  if (NOT ADIOS2_FOUND)
-    message(FATAL_ERROR "ADIOS2 requested but couldn't be found. Either set ADIOS2_DIR to the install prefix as hint or disable by setting ATHENAPK_DISABLE_ADIOS2=ON")
-  endif()
+  include(FetchContent)
+  set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+  set(ADIOS2_USE_CXX11 ON CACHE BOOL "" FORCE)
+  FetchContent_Declare(ADIOS2
+    GIT_REPOSITORY "https://github.com/ornladios/ADIOS2.git"
+    GIT_TAG        "v2.12.1")
+  FetchContent_MakeAvailable(ADIOS2)
 endif()
 
 option(AthenaPK_ENABLE_TESTING "Enable AthenaPK test" ON)
@@ -91,4 +94,3 @@ if (AthenaPK_ENABLE_TESTING)
   include(CTest)
   add_subdirectory(tst/regression)
 endif()
-
