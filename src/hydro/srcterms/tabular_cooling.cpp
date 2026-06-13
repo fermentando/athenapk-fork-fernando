@@ -548,7 +548,6 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto temp_ceil = ((T_ceil_ < temp_cool_ceil) && (T_ceil_ > 0.)) ? T_ceil_ : temp_cool_ceil;
   const auto glob_gamma_ = glob_gamma;
 
-
   // Grab some necessary variables
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
   const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
@@ -563,10 +562,6 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   // Get reference values
   const auto temp_final = std::pow(10.0, log_temp_final_);
   const auto lambda_final = lambda_final_;
-
-
-
-
 
   par_for(
       DEFAULT_LOOP_PATTERN, "TabularCooling::TownsendSrcTerm", DevExecSpace(), 0,
