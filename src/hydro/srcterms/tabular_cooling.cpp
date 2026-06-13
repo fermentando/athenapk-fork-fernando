@@ -67,6 +67,11 @@ TabularCooling::TabularCooling(ParameterInput *pin,
   // negative means disabled
   T_floor_ = pin->GetOrAddReal("hydro", "Tfloor", -1.0);
   T_ceil_ = pin->GetOrAddReal("cooling", "Tceil", -1.0);
+  shutoff_for_zero_tracer_ =
+      pin->GetOrAddBoolean("cooling", "shutoff_for_zero_tracer", false);
+  PARTHENON_REQUIRE_THROWS(
+      !shutoff_for_zero_tracer_ || hydro_pkg->Param<int>("nscalars") > 0,
+      "cooling/shutoff_for_zero_tracer requires hydro/nscalars > 0.");
   const auto T_eq_ = pin->GetOrAddReal("cooling", "Teq", -1.0);
 
 
@@ -329,6 +334,8 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
   const CoolingTableObj cooling_table_obj = cooling_table_obj_;
   const auto gm1 = (hydro_pkg->Param<Real>("AdiabaticIndex") - 1.0);
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
+  const auto nhydro = hydro_pkg->Param<int>("nhydro");
+  const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
 
   const unsigned int max_iter = max_iter_;
 
@@ -364,6 +371,9 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         auto &cons = cons_pack(b);
         auto &prim = prim_pack(b);
+        if (shutoff_for_zero_tracer && cons(nhydro, k, j, i) <= 0.0) {
+          return;
+        }
         // Need to use `cons` here as prim may still contain state at t_0;
         const Real rho = cons(IDN, k, j, i);
         // TODO(pgrete) with potentially more EOS, a separate get_pressure (or similar)
@@ -533,6 +543,8 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto units = hydro_pkg->Param<Units>("units");
   const auto gm1 = (hydro_pkg->Param<Real>("AdiabaticIndex") - 1.0);
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
+  const auto nhydro = hydro_pkg->Param<int>("nhydro");
+  const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
   const Real X_by_mh2 =
       std::pow((1 - hydro_pkg->Param<Real>("He_mass_fraction")) / units.mh(), 2);
 
@@ -569,6 +581,9 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         auto &cons = cons_pack(b);
         auto &prim = prim_pack(b);
+        if (shutoff_for_zero_tracer && cons(nhydro, k, j, i) <= 0.0) {
+          return;
+        }
         // Need to use `cons` here as prim may still contain state at t_0;
         const auto rho = cons(IDN, k, j, i);
         // TODO(pgrete) with potentially more EOS, a separate get_pressure (or similar)
@@ -667,6 +682,8 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
   const CoolingTableObj cooling_table_obj = cooling_table_obj_;
   const auto gm1 = (hydro_pkg->Param<Real>("AdiabaticIndex") - 1.0);
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
+  const auto nhydro = hydro_pkg->Param<int>("nhydro");
+  const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
 
   // Determine the cooling floor, whichever is higher of the cooling table floor
   // or fluid solver floor
@@ -683,6 +700,7 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
 
   // Grab some necessary variables
   const auto &prim_pack = md->PackVariables(std::vector<std::string>{"prim"});
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
   IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
@@ -698,6 +716,11 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
                     Real &thread_min_cooling_time) {
         auto &prim = prim_pack(b);
+        auto &cons = cons_pack(b);
+
+        if (shutoff_for_zero_tracer && cons(nhydro, k, j, i) <= 0.0) {
+          return;
+        }
 
         const Real rho = prim(IDN, k, j, i);
         const Real pres = prim(IPR, k, j, i);

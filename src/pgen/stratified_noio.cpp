@@ -251,6 +251,9 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
                  cons(IM3, k, j, i) = 0.0;
                  // internal energy term from rhoe_over_rho; kinetic part is zero here
                  cons(IEN, k, j, i) = rhoe_fac * rho_at_j;
+                 for (auto n = nhydro; n < nhydro + nscalars; n++) {
+                   cons(n, k, j, i) = 0.0;
+                 }
                });
 
 
@@ -652,6 +655,8 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
                     "Injecting only supported for hydro sims at the moment.");
 
   const auto gamma = pkg->Param<Real>("AdiabaticIndex");
+  const auto nhydro = pkg->Param<int>("nhydro");
+  const auto nscalars = pkg->Param<int>("nscalars");
 
   pmb->par_for(
       "turbulence: inject blob", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s,
@@ -680,6 +685,9 @@ void InjectBlob(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt)
           // adjust total energy density (using original rho_e translates to an increase
           // of 1/chi in temperature)
           cons(IEN, k, j, i) = rho_e;
+          for (auto n = nhydro; n < nhydro + nscalars; n++) {
+            cons(n, k, j, i) = cons(IDN, k, j, i);
+          }
         }
       });
 

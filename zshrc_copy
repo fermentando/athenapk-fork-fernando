@@ -1,0 +1,75 @@
+# Increase history file size
+HISTSIZE=1000000             # Number of commands in memory
+SAVEHIST=2000000             # Number of commands to save to file
+HISTFILE=~/.zsh_history      # History file location
+
+# Share history across terminals in real-time
+setopt SHARE_HISTORY         # Share history instantly across sessions
+setopt INC_APPEND_HISTORY    # Append to the history file immediately
+setopt HIST_IGNORE_ALL_DUPS  # Don’t store duplicate commands
+setopt HIST_REDUCE_BLANKS    # Remove superfluous whitespace
+setopt EXTENDED_HISTORY      # Timestamp each command
+
+function hist_since() {
+  local ts=$(date -j -f "%Y-%m-%d %H:%M:%S" "$1" +%s 2>/dev/null)
+  if [[ -z "$ts" ]]; then
+    echo "❌ Invalid date format. Use: YYYY-MM-DD HH:MM:SS"
+    return 1
+  fi
+
+  awk -v ts="$ts" '
+    {
+      if ($0 ~ /^:/) {
+        split($0, a, ":")
+        time = a[2]
+        getline cmd
+        if (time >= ts) {
+          print time " - " cmd
+        }
+      }
+    }
+  ' ~/.zsh_history
+}
+
+
+# Optional: Ignore trivial commands
+HISTIGNORE="ls:cd:cd -:pwd:exit:date:* --help"
+
+
+#JAVA Runtime
+export JAVA_HOME="/Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home"
+export PATH=$JAVA_HOME/bin:$PATH
+export SPREADSHEET_ID='/Users/fernando/PhD/aas_job_tracker.xlsx'
+
+# For non-interactive sessions, stop execution here
+[[ -z "$PS1" ]] && return
+
+#Enable colours
+autoload -U colors && colors
+
+
+# Set prompt host:pwd
+export PS1="%m:%~> "
+
+# Aliases
+alias sshMPA='ssh -Y fernando@slogin.mpa-garching.mpg.de'
+alias sshFreya='ssh -Y ferhi@freya01.bc.rzg.mpg.de'
+alias sshOrion='ssh -Y ferhi@orion02.bc.mpcdf.mpg.de'
+alias sshCobra-'ssh -Y ferhi@cobra.mpcdf.mpg.de'
+alias sshRaven='ssh -Y ferhi@raven.mpcdf.mpg.de'
+alias sshViper='ssh -Y ferhi@viper.mpcdf.mpg.de'
+alias sshViperGPU='ssh -Y ferhi@viper12i.mpcdf.mpg.de'
+alias ls='ls -G'
+alias sshMounting='sshfs fernando@slogin.mpa-garching.mpg.de:~/remote_dir/ remote_dir'
+alias sshMuon='ssh -Y fh449@muon2.ast.cam.ac.uk'
+alias sshCascade='ssh -Y dc-hida1@login.hpc.cam.ac.uk'
+alias sshCuillin='ssh -Y fhidalgo@cuillin.roe.ac.uk'
+alias sshIcelake='ssh -Y dc-hida1@login-icelake.hpc.cam.ac.uk'
+alias sshSimba='ssh -Y fhidalgo@simba.roe.ac.uk'
+# Apps
+alias vlc='/Applications/VLC.app/Contents/MacOS/VLC'
+
+# Zsh-specific prompt customization
+# Equivalent to your bash PS1: "[username@hostname directory]$"
+export PS1="%{$fg[green]%}[%n@%m %1~]%#%{$reset_color%} "
+alias python=python3
