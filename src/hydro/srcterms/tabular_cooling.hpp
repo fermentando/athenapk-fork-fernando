@@ -209,8 +209,9 @@ class TabularCooling {
   // Temperature ceiling
   parthenon::Real T_ceil_;
 
-  // If true, skip cooling in cells with zero first passive scalar density.
+  // If true, skip cooling in cells below the first passive scalar fraction threshold.
   bool shutoff_for_zero_tracer_;
+  parthenon::Real shutoff_tracer_threshold_;
 
   // Lambda at eq temperature for volumetric heating
   parthenon::Real glob_gamma;

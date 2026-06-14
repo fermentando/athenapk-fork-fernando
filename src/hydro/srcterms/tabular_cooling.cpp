@@ -69,9 +69,13 @@ TabularCooling::TabularCooling(ParameterInput *pin,
   T_ceil_ = pin->GetOrAddReal("cooling", "Tceil", -1.0);
   shutoff_for_zero_tracer_ =
       pin->GetOrAddBoolean("cooling", "shutoff_for_zero_tracer", false);
+  shutoff_tracer_threshold_ =
+      pin->GetOrAddReal("cooling", "shutoff_tracer_threshold", 1.0e-12);
   PARTHENON_REQUIRE_THROWS(
       !shutoff_for_zero_tracer_ || hydro_pkg->Param<int>("nscalars") > 0,
       "cooling/shutoff_for_zero_tracer requires hydro/nscalars > 0.");
+  PARTHENON_REQUIRE_THROWS(shutoff_tracer_threshold_ >= 0.0,
+                           "cooling/shutoff_tracer_threshold must be >= 0.");
   const auto T_eq_ = pin->GetOrAddReal("cooling", "Teq", -1.0);
 
 
@@ -336,6 +340,7 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
+  const auto shutoff_tracer_threshold = shutoff_tracer_threshold_;
 
   const unsigned int max_iter = max_iter_;
 
@@ -371,11 +376,12 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         auto &cons = cons_pack(b);
         auto &prim = prim_pack(b);
-        if (shutoff_for_zero_tracer && cons(nhydro, k, j, i) <= 0.0) {
-          return;
-        }
         // Need to use `cons` here as prim may still contain state at t_0;
         const Real rho = cons(IDN, k, j, i);
+        if (shutoff_for_zero_tracer &&
+            cons(nhydro, k, j, i) <= shutoff_tracer_threshold * rho) {
+          return;
+        }
         // TODO(pgrete) with potentially more EOS, a separate get_pressure (or similar)
         // function could be useful.
         Real internal_e =
@@ -545,6 +551,7 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
+  const auto shutoff_tracer_threshold = shutoff_tracer_threshold_;
   const Real X_by_mh2 =
       std::pow((1 - hydro_pkg->Param<Real>("He_mass_fraction")) / units.mh(), 2);
 
@@ -581,11 +588,12 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
       KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
         auto &cons = cons_pack(b);
         auto &prim = prim_pack(b);
-        if (shutoff_for_zero_tracer && cons(nhydro, k, j, i) <= 0.0) {
-          return;
-        }
         // Need to use `cons` here as prim may still contain state at t_0;
         const auto rho = cons(IDN, k, j, i);
+        if (shutoff_for_zero_tracer &&
+            cons(nhydro, k, j, i) <= shutoff_tracer_threshold * rho) {
+          return;
+        }
         // TODO(pgrete) with potentially more EOS, a separate get_pressure (or similar)
         // function could be useful.
         auto internal_e =
@@ -684,6 +692,7 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
+  const auto shutoff_tracer_threshold = shutoff_tracer_threshold_;
 
   // Determine the cooling floor, whichever is higher of the cooling table floor
   // or fluid solver floor
@@ -718,11 +727,11 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
         auto &prim = prim_pack(b);
         auto &cons = cons_pack(b);
 
-        if (shutoff_for_zero_tracer && cons(nhydro, k, j, i) <= 0.0) {
+        const Real rho = prim(IDN, k, j, i);
+        if (shutoff_for_zero_tracer &&
+            cons(nhydro, k, j, i) <= shutoff_tracer_threshold * rho) {
           return;
         }
-
-        const Real rho = prim(IDN, k, j, i);
         const Real pres = prim(IPR, k, j, i);
 
         const Real internal_e = pres / (rho * gm1);

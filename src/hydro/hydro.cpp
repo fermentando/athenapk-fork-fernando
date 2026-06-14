@@ -833,6 +833,9 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
   }
   pkg->AddParam<>("enable_cooling", cooling);
 
+  auto nscalars = pin->GetOrAddInteger("hydro", "nscalars", 0);
+  pkg->AddParam("nscalars", nscalars);
+
   if (cooling == Cooling::tabular) {
     TabularCooling tabular_cooling(pin, pkg);
     pkg->AddParam<>("tabular_cooling", tabular_cooling);
@@ -840,9 +843,6 @@ std::shared_ptr<StateDescriptor> Initialize(ParameterInput *pin) {
 
   auto scratch_level = pin->GetOrAddInteger("hydro", "scratch_level", 0);
   pkg->AddParam("scratch_level", scratch_level);
-
-  auto nscalars = pin->GetOrAddInteger("hydro", "nscalars", 0);
-  pkg->AddParam("nscalars", nscalars);
 
   std::vector<std::string> cons_labels(nhydro);
   cons_labels[IDN] = "density";
