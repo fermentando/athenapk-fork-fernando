@@ -43,6 +43,7 @@
 #include "../eos/adiabatic_glmmhd.hpp"
 #include "../eos/adiabatic_hydro.hpp"
 #include "../main.hpp"
+#include "../bvals/boundary_conditions_apk.hpp"
 #include "../tracers/tracers.hpp"
 #include "../units.hpp"
 #include "../utils/few_modes_ft.hpp"
@@ -350,6 +351,15 @@ double rho_profile_Y(double Y, double rho0, double a, double H) {
 
 void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto inject_time = hydro_pkg->Param<Real>("turbulence/inject_once_at_time");
+  if (inject_time >= 0.0 &&
+      hydro_pkg->Param<Real>("simulation_time_for_bcs") < inject_time) {
+    Hydro::BoundaryFunction::ReflectBC<X2DIR, parthenon::BoundaryFunction::BCSide::Inner>(
+        mbd, coarse);
+    return;
+  }
+
   auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
 
   const auto nb = IndexRange{0, 0};
@@ -470,6 +480,15 @@ void StratInflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
 
 void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) {
   auto pmb = mbd->GetBlockPointer();
+  auto hydro_pkg = pmb->packages.Get("Hydro");
+  const auto inject_time = hydro_pkg->Param<Real>("turbulence/inject_once_at_time");
+  if (inject_time >= 0.0 &&
+      hydro_pkg->Param<Real>("simulation_time_for_bcs") < inject_time) {
+    Hydro::BoundaryFunction::ReflectBC<X2DIR, parthenon::BoundaryFunction::BCSide::Outer>(
+        mbd, coarse);
+    return;
+  }
+
   auto cons_pack = mbd->PackVariables(std::vector<std::string>{"cons"}, coarse);
 
   const auto nb = IndexRange{0, 0};

@@ -125,6 +125,29 @@ int main(int argc, char *argv[]) {
                                               "StratInflowInnerX2", stratified_box_noio::StratInflowInnerX2);
     pman.app_input->RegisterBoundaryCondition(parthenon::BoundaryFace::outer_x2,
                                               "StratInflowOuterX2", stratified_box_noio::StratInflowOuterX2);
+  } else if (problem == "stratified_box_exponential") {
+    pman.app_input->InitUserMeshData = stratified_box_exponential::InitUserMeshData;
+    pman.app_input->MeshProblemGenerator = stratified_box_exponential::ProblemGenerator;
+    //Hydro::ProblemSourceUnsplit = stratified_box_exponential::StratUnsplitSrcTerm;
+    Hydro::ProblemInitPackageData = stratified_box_exponential::ProblemInitPackageData;
+    Tracers::ProblemInitTracerData = stratified_box_exponential::ProblemInitTracerData;
+    Tracers::ProblemFillTracers = stratified_box_exponential::ProblemFillTracers;
+    Hydro::ProblemSourceFirstOrder = stratified_box_exponential::DrivingAndFrameTrack;
+    pman.app_input->InitMeshBlockUserData = stratified_box_exponential::SetPhases;
+    pman.app_input->MeshBlockUserWorkBeforeOutput =
+        stratified_box_exponential::UserWorkBeforeOutput;
+    pman.app_input->RegisterBoundaryCondition(
+        parthenon::BoundaryFace::inner_x2, "StratExpNoFlowInnerX2",
+        stratified_box_exponential::StratNoFlowInnerX2);
+    pman.app_input->RegisterBoundaryCondition(
+        parthenon::BoundaryFace::outer_x2, "StratExpNoFlowOuterX2",
+        stratified_box_exponential::StratNoFlowOuterX2);
+    pman.app_input->RegisterBoundaryCondition(
+        parthenon::BoundaryFace::inner_x2, "StratExpInflowInnerX2",
+        stratified_box_exponential::StratInflowInnerX2);
+    pman.app_input->RegisterBoundaryCondition(
+        parthenon::BoundaryFace::outer_x2, "StratExpInflowOuterX2",
+        stratified_box_exponential::StratInflowOuterX2);
   }else if (problem == "stratified_box_simple") {
     pman.app_input->InitUserMeshData = stratified_box_simple::InitUserMeshData;
     pman.app_input->MeshProblemGenerator = stratified_box_simple::ProblemGenerator;

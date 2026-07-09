@@ -212,6 +212,7 @@ class TabularCooling {
   // If true, skip cooling in cells below the first passive scalar fraction threshold.
   bool shutoff_for_zero_tracer_;
   parthenon::Real shutoff_tracer_threshold_;
+  parthenon::Real shutoff_cold_temp_threshold_;
 
   // Lambda at eq temperature for volumetric heating
   parthenon::Real glob_gamma;
@@ -239,6 +240,9 @@ class TabularCooling {
                  std::shared_ptr<parthenon::StateDescriptor> hydro_pkg);
 
   void SrcTerm(parthenon::MeshData<parthenon::Real> *md, const parthenon::Real dt) const;
+
+  parthenon::Real GetShutoffTracerThreshold(
+      parthenon::MeshData<parthenon::Real> *md) const;
 
   // Townsend 2009 exact integration scheme
   void TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,

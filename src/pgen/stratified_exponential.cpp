@@ -3,8 +3,8 @@
 // Copyright (c) 2021-2023, Athena-Parthenon Collaboration. All rights reserved.
 // Licensed under the 3-clause BSD License, see LICENSE file for details
 //========================================================================================
-//! \file stratified.cpp
-//  \brief Idealized stratified box generator
+//! \file stratified_exponential.cpp
+//  \brief Stratified box with exponential gravity and temperature profiles
 //
 //========================================================================================
 
@@ -49,7 +49,7 @@
 #include "../utils/few_modes_ft.hpp"
 #include "utils/error_checking.hpp"
 
-namespace stratified_box_noio {
+namespace stratified_box_exponential {
 using namespace parthenon;
 using namespace parthenon::package::prelude;
 using parthenon::DevMemSpace;
@@ -75,13 +75,8 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
   IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
   auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
-  const auto a_over_H = hydro_pkg->Param<Real>("a_over_H");
-  const auto surface_density = hydro_pkg->Param<Real>("surface_density");
-  const auto H = hydro_pkg->Param<Real>("H_height");
-  const auto units = hydro_pkg->Param<Units>("units");
-  const auto code_units_length = units.code_length_cgs();
-  const auto G = units.gravitational_constant();
-
+  const auto H_g = hydro_pkg->Param<Real>("H_g");
+  const auto g0 = hydro_pkg->Param<Real>("g0");
   parthenon::par_for(
       DEFAULT_LOOP_PATTERN, "GravitationalFieldSrcTerm", parthenon::DevExecSpace(), 0,
       cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
@@ -89,23 +84,38 @@ void GravitationalFieldSrcTerm(parthenon::MeshData<parthenon::Real> *md,
         auto &cons = cons_pack(b);
         auto &prim = prim_pack(b);
         const auto &coords = cons_pack.GetCoords(b);
+        const Real y = coords.Xc<2>(j);
+        const Real g_y = (y == 0.0) ? 0.0 : -g0 * exp(-fabs(y) / H_g);
 
-        auto y_norm = coords.Xc<2>(j) / (a_over_H * H);
-        const Real g_z =
-            2 * M_PI * G * surface_density * y_norm / std::sqrt(1 + y_norm * y_norm);
-
-        // Apply g_r as a source term
         const Real den = prim(IDN, k, j, i);
-        const Real src = (y_norm == 0) ? 0 : beta_dt * den * g_z;
-        cons(IM2, k, j, i) -= src;
-        cons(IEN, k, j, i) -= src * prim(IV2, k, j, i);
+        const Real src = beta_dt * den * g_y;
+        cons(IM2, k, j, i) += src;
+        cons(IEN, k, j, i) += src * prim(IV2, k, j, i);
       });
 }
 
 KOKKOS_INLINE_FUNCTION
-double rho_profile_Y(double Y, double rho0, double a, double H, Real code_units_length) {
-  const double arg = Y / (a * H);
-  return rho0 * exp(-a * (sqrt(1.0 + arg * arg) - 1.0));
+Real temperature_profile_Y(const Real Y, const Real T0, const Real H_t) {
+  return T0 * exp(fabs(Y) / H_t);
+}
+
+KOKKOS_INLINE_FUNCTION
+Real pressure_profile_Y(const Real Y, const Real P0, const Real H_p,
+                        const Real H_g, const Real H_t) {
+  const Real z = fabs(Y);
+  const Real inverse_scale = 1.0 / H_g + 1.0 / H_t;
+  return P0 * exp(-(1.0 / H_p) * (1.0 - exp(-inverse_scale * z)) /
+                  inverse_scale);
+}
+
+KOKKOS_INLINE_FUNCTION
+Real rho_profile_Y(const Real Y, const Real rho0, const Real T0,
+                   const Real mbar_over_kb, const Real H_p, const Real H_g,
+                   const Real H_t) {
+  const Real P0 = rho0 * T0 / mbar_over_kb;
+  const Real pressure = pressure_profile_Y(Y, P0, H_p, H_g, H_t);
+  const Real temperature = temperature_profile_Y(Y, T0, H_t);
+  return pressure * mbar_over_kb / temperature;
 }
 
 KOKKOS_INLINE_FUNCTION
@@ -146,6 +156,12 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   auto a_over_H = pin->GetReal("problem/stratified_box", "a_over_H");
   auto surface_density = pin->GetReal("problem/stratified_box", "surface_density");
   auto T_base = pin->GetReal("problem/stratified_box", "T_base");
+  const auto H_g_over_H_p = pin->GetOrAddReal(
+      "problem/stratified_box", "H_g_over_H_p", 2.0);
+  const auto H_t_over_H_p = pin->GetOrAddReal(
+      "problem/stratified_box", "H_t_over_H_p", 4.0);
+  PARTHENON_REQUIRE_THROWS(H_g_over_H_p > 0.0 && H_t_over_H_p > 0.0,
+                           "H_g_over_H_p and H_t_over_H_p must be positive.");
   auto T_cloud = pin->GetReal("problem/stratified_box", "T_cloud");
   drive_turbulence = pin->GetOrAddBoolean("problem/turbulence", "drive_turbulence", true);
   n_ghosts = pin->GetOrAddInteger("mesh", "nghost", 4);
@@ -158,9 +174,14 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   const auto g0 = 2 * M_PI * units.gravitational_constant() * surface_density;
   c_s = std::sqrt(T_base / mbar_over_kb);
   auto H_height = c_s * c_s / g0;
+  const auto H_g = H_g_over_H_p * H_height;
+  const auto H_t = H_t_over_H_p * H_height;
   auto rho0 = surface_density / 2 / a_over_H / H_height;
 
   pkg->AddParam<Real>("H_height", H_height);
+  pkg->AddParam<Real>("H_g", H_g);
+  pkg->AddParam<Real>("H_t", H_t);
+  pkg->AddParam<Real>("g0", g0);
   pkg->AddParam<Real>("rho0", rho0);
   pkg->AddParam<Real>("T_base", T_base);
 
@@ -176,7 +197,9 @@ void InitUserMeshData(Mesh *mesh, ParameterInput *pin) {
   msg << "###### g0 = " << g0 / units.cm_s() * units.s() << " cm/s^2" << std::endl;
   msg << "###### T_base = " << T_base << " K" << std::endl;
   msg << "###### c_s = " << c_s / units.cm_s() / 1e5 << " km/s" << std::endl;
-  msg << "###### H = " << H_height * 1e-3 * units.kpc() << " pc" << std::endl;
+  msg << "###### H_p = " << H_height * 1e-3 * units.kpc() << " pc" << std::endl;
+  msg << "###### H_g/H_p = " << H_g_over_H_p << std::endl;
+  msg << "###### H_t/H_p = " << H_t_over_H_p << std::endl;
   std::cout << msg.str() << std::endl;
 
   // (potentially) rescale global times only at the beginning of a simulation
@@ -216,6 +239,8 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto H_g = pmb->packages.Get("Hydro")->Param<Real>("H_g");
+  const auto H_t = pmb->packages.Get("Hydro")->Param<Real>("H_t");
   auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
   const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
   const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
@@ -223,16 +248,12 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
   const double H    = bc_H;
   const auto gamma = pmb->packages.Get("Hydro")->Param<Real>("gamma");
   const auto gm1 = gamma - 1.0;
-  const auto rhoe_over_rho = T_base / mbar_over_kb / gm1;
-
   const auto units = hydro_pkg->Param<Units>("units");
   const auto code_units_length = units.code_length_cgs();
 
 
   // Pack conserved variables and initialize on device
   auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
-  const Real rhoe_fac = rhoe_over_rho; // capture-friendly alias
-
   pmb->par_for("Init stratified profile", 0, cons_pack.GetDim(5) - 1, kb.s, kb.e, jb.s,
                jb.e, ib.s, ib.e,
                KOKKOS_LAMBDA(const int b, const int k, const int j, const int i) {
@@ -240,14 +261,17 @@ void ProblemGenerator(Mesh *pmesh, ParameterInput *pin, MeshData<Real> *md) {
                  const auto &coords = cons_pack.GetCoords(b);
 
                  const Real rho_at_j =
-                     rho_profile_Y(coords.Xc<2>(j), rho0, a, H, code_units_length);
+                     rho_profile_Y(coords.Xc<2>(j), rho0, T_base, mbar_over_kb, H, H_g, H_t);
 
                  cons(IDN, k, j, i) = rho_at_j;
                  cons(IM1, k, j, i) = 0.0;
                  cons(IM2, k, j, i) = 0.0;
                  cons(IM3, k, j, i) = 0.0;
-                 // internal energy term from rhoe_over_rho; kinetic part is zero here
-                 cons(IEN, k, j, i) = rhoe_fac * rho_at_j;
+                 const Real T_at_j =
+                     temperature_profile_Y(coords.Xc<2>(j), T_base, H_t);
+                 // Thermal energy P/(gamma-1); kinetic energy is added below.
+                 cons(IEN, k, j, i) =
+                     rho_at_j * T_at_j / mbar_over_kb / gm1;
                  for (auto n = nhydro; n < nhydro + nscalars; n++) {
                    cons(n, k, j, i) = 0.0;
                  }
@@ -316,6 +340,8 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto H_g = pmb->packages.Get("Hydro")->Param<Real>("H_g");
+  const auto H_t = pmb->packages.Get("Hydro")->Param<Real>("H_t");
   const auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
   const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
   const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
@@ -337,8 +363,8 @@ void StratNoFlowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           auto &cons = cons_pack;
 
           Real Y = coordsb.Xc<2>(j);
-          double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
-          double prsY = T_base * rhoY / mbar_over_kb;
+          double rhoY = rho_profile_Y(Y, rho0, T_base, mbar_over_kb, H, H_g, H_t);
+          double prsY = temperature_profile_Y(Y, T_base, H_t) * rhoY / mbar_over_kb;
 
           // Copy tangential velocities from last interior cell
           cons(IDN,k,j,i) = rhoY;
@@ -374,6 +400,11 @@ void StratInflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto H_g = pmb->packages.Get("Hydro")->Param<Real>("H_g");
+  const auto H_t = pmb->packages.Get("Hydro")->Param<Real>("H_t");
+  const auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
+  const auto mbar_over_kb =
+      pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
   const double rho0 = surface_density / 2/bc_a/bc_H;  // midplane density
   const double a    = bc_a;
   const double H    = bc_H;
@@ -389,14 +420,18 @@ void StratInflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
         const auto &coordsb = cons_pack.GetCoords();
         auto &cons = cons_pack;
         Real Y = coordsb.Xc<2>(j);
-        double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
+        double rhoY = rho_profile_Y(Y, rho0, T_base, mbar_over_kb, H, H_g, H_t);
 
-          // Copy tangential velocities from last interior cell
-          cons(IDN,k,j,i) = rhoY;
-          Real T = cons(IPR,k,jb.s,i) / cons(IDN,k,jb.s,i);
-          Real ci = sqrt( gamma * T );
+          const Real rho_i = cons(IDN, k, jb.s, i);
+          const Real v1_i = cons(IM1, k, jb.s, i) / rho_i;
+          const Real v2_i = cons(IM2, k, jb.s, i) / rho_i;
+          const Real v3_i = cons(IM3, k, jb.s, i) / rho_i;
+          const Real ke_i = 0.5 * rho_i * (SQR(v1_i) + SQR(v2_i) + SQR(v3_i));
+          const Real pres_i = gm1 * (cons(IEN, k, jb.s, i) - ke_i);
+          Real T = pres_i * mbar_over_kb / rho_i;
+          Real ci = sqrt(gamma * T / mbar_over_kb);
 
-          auto V_tot = sqrt( SQR(cons(IV1,k,jb.s,i)) + SQR(cons(IV2,k,jb.s,i)) + SQR(cons(IV3,k,jb.s,i)) );
+          auto V_tot = sqrt(SQR(v1_i) + SQR(v2_i) + SQR(v3_i));
           auto Hi = ci * ci / gm1 + 0.5 * V_tot * V_tot;
           auto J_riemann = -V_tot + 2.0 * ci / gm1;
 
@@ -419,16 +454,16 @@ void StratInflowInnerX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
 
           // Define inner pressure and temperature
 
-          auto pb = cons(IPR,k,jb.s,i) * pow( (1.0 + 0.5 * gm1 * Mn * Mn), (gamma / gm1) );
-          auto Tb = T * pow( (1.0 + 0.5 * gm1 * Mn * Mn), -1.0);
-          auto rho_b = pb / Tb;
+          auto pb = pres_i * pow((1.0 + 0.5 * gm1 * Mn * Mn), (gamma / gm1));
+          auto Tb = T * pow((1.0 + 0.5 * gm1 * Mn * Mn), -1.0);
+          auto rho_b = pb * mbar_over_kb / Tb;
 
-          // Set boundary conditions
+          // Set boundary conditions in conserved variables.
           cons(IDN,k,j,i) = rho_b;
-          cons(IV1,k,j,i) = 0;
-          cons(IV3,k,j,i) = 0;
-          cons(IV2,k,j,i) = Vn;
-          cons(IPR,k,j,i) = pb;
+          cons(IM1,k,j,i) = 0.0;
+          cons(IM2,k,j,i) = rho_b * Vn;
+          cons(IM3,k,j,i) = 0.0;
+          cons(IEN,k,j,i) = pb / gm1 + 0.5 * rho_b * SQR(Vn);
 
       });
 }
@@ -452,6 +487,8 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto H_g = pmb->packages.Get("Hydro")->Param<Real>("H_g");
+  const auto H_t = pmb->packages.Get("Hydro")->Param<Real>("H_t");
   const auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
   const auto mbar_over_kb = pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
   const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
@@ -471,8 +508,8 @@ void StratNoFlowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           auto &cons = cons_pack;
 
           Real Y = coordsb.Xc<2>(j);
-          double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
-          auto prsY = T_base * rhoY / mbar_over_kb;
+          double rhoY = rho_profile_Y(Y, rho0, T_base, mbar_over_kb, H, H_g, H_t);
+          auto prsY = temperature_profile_Y(Y, T_base, H_t) * rhoY / mbar_over_kb;
 
           // Copy tangential velocities from last interior cell
           cons(IDN,k,j,i) = rhoY;
@@ -506,6 +543,11 @@ void StratInflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
   auto surface_density = pmb->packages.Get("Hydro")->Param<Real>("surface_density");
   auto bc_a = pmb->packages.Get("Hydro")->Param<Real>("a_over_H");
   auto bc_H = pmb->packages.Get("Hydro")->Param<Real>("H_height");
+  const auto H_g = pmb->packages.Get("Hydro")->Param<Real>("H_g");
+  const auto H_t = pmb->packages.Get("Hydro")->Param<Real>("H_t");
+  const auto T_base = pmb->packages.Get("Hydro")->Param<Real>("T_base");
+  const auto mbar_over_kb =
+      pmb->packages.Get("Hydro")->Param<Real>("mbar_over_kb");
   const double rho0 = surface_density / 2/ bc_a/bc_H;  // midplane density
   const double a    = bc_a;
   const double H    = bc_H;
@@ -523,14 +565,18 @@ void StratInflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
           const auto &coordsb = cons_pack.GetCoords();
           auto &cons = cons_pack;
           Real Y = coordsb.Xc<2>(j);
-          double rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
+          double rhoY = rho_profile_Y(Y, rho0, T_base, mbar_over_kb, H, H_g, H_t);
 
-          // Copy tangential velocities from last interior cell
-          cons(IDN,k,j,i) = rhoY;
-          Real T = cons(IPR,k,jb.e,i) / cons(IDN,k,jb.e,i);
-          Real ci = sqrt( gamma * T );
+          const Real rho_i = cons(IDN, k, jb.e, i);
+          const Real v1_i = cons(IM1, k, jb.e, i) / rho_i;
+          const Real v2_i = cons(IM2, k, jb.e, i) / rho_i;
+          const Real v3_i = cons(IM3, k, jb.e, i) / rho_i;
+          const Real ke_i = 0.5 * rho_i * (SQR(v1_i) + SQR(v2_i) + SQR(v3_i));
+          const Real pres_i = gm1 * (cons(IEN, k, jb.e, i) - ke_i);
+          Real T = pres_i * mbar_over_kb / rho_i;
+          Real ci = sqrt(gamma * T / mbar_over_kb);
 
-          auto V_tot = sqrt( SQR(cons(IV1,k,jb.e,i)) + SQR(cons(IV2,k,jb.e,i)) + SQR(cons(IV3,k,jb.e,i)) );
+          auto V_tot = sqrt(SQR(v1_i) + SQR(v2_i) + SQR(v3_i));
           auto Hi = ci * ci / gm1 + 0.5 * V_tot * V_tot;
           auto J_riemann = -V_tot + 2.0 * ci / gm1;
 
@@ -553,16 +599,16 @@ void StratInflowOuterX2(std::shared_ptr<MeshBlockData<Real>> &mbd, bool coarse) 
 
           // Define inner pressure and temperature
 
-          auto pb = cons(IPR,k,jb.e,i) * pow( (1.0 + 0.5 * gm1 * Mn * Mn), (gamma / gm1) );
-          auto Tb = T * pow( (1.0 + 0.5 * gm1 * Mn * Mn), -1.0);
-          auto rho_b = pb / Tb;
+          auto pb = pres_i * pow((1.0 + 0.5 * gm1 * Mn * Mn), (gamma / gm1));
+          auto Tb = T * pow((1.0 + 0.5 * gm1 * Mn * Mn), -1.0);
+          auto rho_b = pb * mbar_over_kb / Tb;
 
-          // Set boundary conditions
+          // Set boundary conditions in conserved variables.
           cons(IDN,k,j,i) = rho_b;
-          cons(IV1,k,j,i) = 0;
-          cons(IV3,k,j,i) = 0;
-          cons(IV2,k,j,i) = Vn;
-          cons(IPR,k,j,i) = pb;
+          cons(IM1,k,j,i) = 0.0;
+          cons(IM2,k,j,i) = rho_b * Vn;
+          cons(IM3,k,j,i) = 0.0;
+          cons(IEN,k,j,i) = pb / gm1 + 0.5 * rho_b * SQR(Vn);
 
       });
 }
@@ -1232,7 +1278,6 @@ void Perturb(MeshData<Real> *md, const Real dt) {
 
 // Forward declarations
 void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt);
-void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt);
 
 //----------------------------------------------------------------------------------------
 //! \fn void DrivingAndFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const
@@ -1242,15 +1287,7 @@ void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const R
 
 void DrivingAndFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm,
                           const Real dt) {
-  // Call turbulence driving
   Driving(md, tm, dt);
-
-  // NOTE: Temporarily disabled due to issues with boundary conditions
-  // (see conversation and issue tracking). To re-enable, uncomment the
-  // following line. Leaving the implementation in place so this can be
-  // restored without further edits.
-  // Call frame tracking for cold gas drift
-  ColdGasFrameTrack(md, tm, dt);
 }
 
 void Driving(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
@@ -1436,234 +1473,4 @@ TaskStatus ProblemFillTracers(MeshData<Real> *md, const parthenon::SimTime &tm,
   return TaskStatus::complete;
 }
 
-//========================================================================================
-//! \fn void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const
-//! Real dt)
-//  \brief Track and shift frame when cold gas drifts (using cumulative displacement)
-//
-//  When cold gas moves inward by one cell width in Y-direction, this function:
-//  1. Removes the trailing row (outermost in Y)
-//  2. Adds a new row at the inner Y boundary with density from rho_profile_Y
-//  3. Maintains velocity continuity and recomputes energy
-//========================================================================================
-
-void ColdGasFrameTrack(MeshData<Real> *md, const parthenon::SimTime &tm, const Real dt) {
-  auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
-
-  // Check if frame tracking is enabled
-  const auto enable_frame_track =
-      hydro_pkg->Param<bool>("stratified_box/enable_cold_gas_frame_track");
-  if (!enable_frame_track) return;
-
-  // Get pointer to cumulative displacement
-  Real* const p_frame_disp =
-      hydro_pkg->MutableParam<Real>("stratified_box/frame_displacement_y");
-  Real& frame_disp = *p_frame_disp;
-
-  // Get density profile parameters
-  const auto surface_density = hydro_pkg->Param<Real>("surface_density");
-  const auto bc_a = hydro_pkg->Param<Real>("a_over_H");
-  const auto bc_H = hydro_pkg->Param<Real>("H_height");
-  const auto gamma = hydro_pkg->Param<Real>("gamma");
-  const auto mean_molecular_mass_by_kb = hydro_pkg->Param<Real>("mbar_over_kb");
-  const double rho0 = surface_density / 2.0 / bc_a / bc_H;
-  const double a = bc_a;
-  const double H = bc_H;
-  const double gm1 = gamma - 1.0;
-
-  const auto units = hydro_pkg->Param<Units>("units");
-  const auto code_units_length = units.code_length_cgs();
-
-  // Pack all blocks' conserved variables for parallel reduction
-  auto cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
-  
-  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
-  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
-  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
-
-  // Compute mass-weighted average v2 at inner boundary (jb.s)
-  // Only include gas cells with temperature < 2e5 K
-  Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
-  const Real T_cut = 2e5; // Kelvin
-
-  Kokkos::parallel_reduce(
-      "InnerBoundary::cold_gas_v2_mass_weighted",
-      Kokkos::MDRangePolicy<Kokkos::Rank<3>>(
-          {0, kb.s, ib.s},
-          {cons_pack.GetDim(5), kb.e + 1, ib.e + 1}
-      ),
-      KOKKOS_LAMBDA(const int &b, const int &k, const int &i,
-                    Real &local_momentum_sum, Real &local_mass_sum) {
-          auto &cons = cons_pack(b);
-          const int j = jb.s; // Inner boundary in Y-direction
-          
-          const Real rho_cell = cons(IDN, k, j, i);
-          if (rho_cell <= 0.0) return; // Skip invalid cells
-          
-          const Real T_cell = mean_molecular_mass_by_kb * cons(IPR, k, j, i) / rho_cell;
-          if (T_cell < T_cut) {
-              const Real v2_cell = cons(IM2, k, j, i) / rho_cell;
-              local_momentum_sum += rho_cell * v2_cell; // Mass-weighted velocity
-              local_mass_sum += rho_cell;
-          }
-      },
-      Kokkos::Sum<Real>(sums[0]), // Sum of rho * v2
-      Kokkos::Sum<Real>(sums[1])  // Sum of rho (total cold gas mass)
-  );
-
-#ifdef MPI_PARALLEL
-  // Sum over all processors
-  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 2, MPI_PARTHENON_REAL,
-                                    MPI_SUM, MPI_COMM_WORLD));
-#endif // MPI_PARALLEL
-
-  Real v2_avg = 0.0;
-  if (sums[1] > 0.0) {
-      v2_avg = sums[0] / sums[1]; // Mass-weighted average velocity
-  } else {
-      v2_avg = 0.0; // No cold gas at boundary
-  }
-
-  // Update cumulative displacement (inward is negative)
-  frame_disp += v2_avg * dt;
-
-  // Get cell width in Y-direction from first block
-  auto pmb = md->GetBlockData(0)->GetBlockPointer();
-  Real dy = (pmb->pmy_mesh->mesh_size.xmax(X2DIR) - 
-             pmb->pmy_mesh->mesh_size.xmin(X2DIR)) /
-            pmb->pmy_mesh->GetDefaultBlockSize().nx(parthenon::X2DIR);
-
-  // Check if cumulative displacement exceeds one cell width
-  if (std::abs(frame_disp) >= dy) {
-    // Determine shift direction
-    int num_shifts = static_cast<int>(std::floor(std::abs(frame_disp) / dy));
-    int shift_dir = (frame_disp < 0.0) ? -1 : 1; // -1 for inward, +1 for outward
-
-    // Perform shifts on device
-    for (int shift = 0; shift < num_shifts; shift++) {
-      if (shift_dir == -1) {
-        // Inward shift: row j ← row j+1 for j = [jb.s, jb.e-1]
-        // Shift all data one row inward
-        const int num_vars = cons_pack.GetDim(4);
-        Kokkos::parallel_for(
-            "InnerBoundary::shift_inward",
-            Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
-                {0, kb.s, jb.s, ib.s},
-                {cons_pack.GetDim(5), kb.e + 1, jb.e, ib.e + 1}
-            ),
-            KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
-                auto &cons = cons_pack(b);
-                for (int n = 0; n < num_vars; n++) {
-                  cons(n, k, j, i) = cons(n, k, j + 1, i);
-                }
-            }
-        );
-
-        // Populate new row at jb.s with profile values
-        Kokkos::parallel_for(
-            "InnerBoundary::populate_inner",
-            Kokkos::MDRangePolicy<Kokkos::Rank<3>>(
-                {0, kb.s, ib.s},
-                {cons_pack.GetDim(5), kb.e + 1, ib.e + 1}
-            ),
-            KOKKOS_LAMBDA(const int &b, const int &k, const int &i) {
-                auto &cons = cons_pack(b);
-                const auto &coords = cons_pack.GetCoords(b);
-                
-                const Real Y = coords.Xc<2>(jb.s);
-                const Real rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
-
-                // Set density
-                cons(IDN, k, jb.s, i) = rhoY;
-
-                // Copy tangential velocities from next interior cell
-                cons(IM1, k, jb.s, i) = cons(IM1, k, jb.s + 1, i);
-                cons(IM3, k, jb.s, i) = cons(IM3, k, jb.s + 1, i);
-
-                // Set normal velocity from nearest interior cell
-                cons(IM2, k, jb.s, i) = cons(IM2, k, jb.s + 1, i);
-
-                // Compute pressure/energy: use temperature from nearest interior cell
-                const Real T = cons(IPR, k, jb.s + 1, i) / cons(IDN, k, jb.s + 1, i);
-                const Real ke = 0.5 *
-                          (cons(IM1, k, jb.s, i) * cons(IM1, k, jb.s, i) +
-                           cons(IM2, k, jb.s, i) * cons(IM2, k, jb.s, i) +
-                           cons(IM3, k, jb.s, i) * cons(IM3, k, jb.s, i)) /
-                          rhoY;
-                const Real ie = T / gm1; // specific internal energy
-                cons(IEN, k, jb.s, i) = rhoY * (ie + ke);
-
-                // Pressure for storage
-                cons(IPR, k, jb.s, i) = rhoY * T;
-            }
-        );
-      } else {
-        // Outward shift: row j ← row j-1 for j = [jb.e, jb.s+1]
-        // Shift all data one row outward
-        const int num_vars = cons_pack.GetDim(4);
-        Kokkos::parallel_for(
-            "InnerBoundary::shift_outward",
-            Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
-                {0, kb.s, jb.s + 1, ib.s},
-                {cons_pack.GetDim(5), kb.e + 1, jb.e + 1, ib.e + 1}
-            ),
-            KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i) {
-                auto &cons = cons_pack(b);
-                const int j_target = jb.e - (j - jb.s - 1); // Reverse iteration
-                const int j_source = j_target - 1;
-                for (int n = 0; n < num_vars; n++) {
-                  cons(n, k, j_target, i) = cons(n, k, j_source, i);
-                }
-            }
-        );
-
-        // Populate new row at jb.e with profile values
-        Kokkos::parallel_for(
-            "InnerBoundary::populate_outer",
-            Kokkos::MDRangePolicy<Kokkos::Rank<3>>(
-                {0, kb.s, ib.s},
-                {cons_pack.GetDim(5), kb.e + 1, ib.e + 1}
-            ),
-            KOKKOS_LAMBDA(const int &b, const int &k, const int &i) {
-                auto &cons = cons_pack(b);
-                const auto &coords = cons_pack.GetCoords(b);
-                
-                const Real Y = coords.Xc<2>(jb.e);
-                const Real rhoY = rho_profile_Y(Y, rho0, a, H, code_units_length);
-
-                // Set density
-                cons(IDN, k, jb.e, i) = rhoY;
-
-                // Copy tangential velocities from nearest interior cell
-                cons(IM1, k, jb.e, i) = cons(IM1, k, jb.e - 1, i);
-                cons(IM3, k, jb.e, i) = cons(IM3, k, jb.e - 1, i);
-
-                // Set normal velocity from nearest interior cell
-                cons(IM2, k, jb.e, i) = cons(IM2, k, jb.e - 1, i);
-
-                // Compute energy
-                const Real T = cons(IPR, k, jb.e - 1, i) / cons(IDN, k, jb.e - 1, i);
-                const Real ke = 0.5 *
-                          (cons(IM1, k, jb.e, i) * cons(IM1, k, jb.e, i) +
-                           cons(IM2, k, jb.e, i) * cons(IM2, k, jb.e, i) +
-                           cons(IM3, k, jb.e, i) * cons(IM3, k, jb.e, i)) /
-                          rhoY;
-                const Real ie = T / gm1;
-                cons(IEN, k, jb.e, i) = rhoY * (ie + ke);
-
-                // Pressure for storage
-                cons(IPR, k, jb.e, i) = rhoY * T;
-            }
-        );
-      }
-      
-      // Ensure shifts complete before next iteration
-      Kokkos::fence();
-    }
-
-    // Reset displacement counter
-    frame_disp -= shift_dir * num_shifts * dy;
-  }
-}
-
-} // namespace stratified_box_noio
+} // namespace stratified_box_exponential

@@ -67,15 +67,22 @@ TabularCooling::TabularCooling(ParameterInput *pin,
   // negative means disabled
   T_floor_ = pin->GetOrAddReal("hydro", "Tfloor", -1.0);
   T_ceil_ = pin->GetOrAddReal("cooling", "Tceil", -1.0);
-  shutoff_for_zero_tracer_ =
-      pin->GetOrAddBoolean("cooling", "shutoff_for_zero_tracer", false);
+  const bool tracer_shutoff_threshold_provided =
+      pin->DoesParameterExist("cooling", "shutoff_tracer_threshold");
+  shutoff_for_zero_tracer_ = pin->GetOrAddBoolean(
+      "cooling", "shutoff_for_zero_tracer", tracer_shutoff_threshold_provided);
   shutoff_tracer_threshold_ =
       pin->GetOrAddReal("cooling", "shutoff_tracer_threshold", 1.0e-12);
+  shutoff_cold_temp_threshold_ =
+      pin->GetOrAddReal("cooling", "shutoff_cold_temp_threshold", 5.0e4);
   PARTHENON_REQUIRE_THROWS(
       !shutoff_for_zero_tracer_ || hydro_pkg->Param<int>("nscalars") > 0,
       "cooling/shutoff_for_zero_tracer requires hydro/nscalars > 0.");
   PARTHENON_REQUIRE_THROWS(shutoff_tracer_threshold_ >= 0.0,
                            "cooling/shutoff_tracer_threshold must be >= 0.");
+  PARTHENON_REQUIRE_THROWS(
+      shutoff_cold_temp_threshold_ > 0.0,
+      "cooling/shutoff_cold_temp_threshold must be > 0.");
   const auto T_eq_ = pin->GetOrAddReal("cooling", "Teq", -1.0);
 
 
@@ -314,6 +321,66 @@ TabularCooling::TabularCooling(ParameterInput *pin,
                                        adiabatic_index, 1.0 - He_mass_fraction, units);
 }
 
+Real TabularCooling::GetShutoffTracerThreshold(MeshData<Real> *md) const {
+  if (!shutoff_for_zero_tracer_) {
+    return shutoff_tracer_threshold_;
+  }
+
+  auto hydro_pkg = md->GetBlockData(0)->GetBlockPointer()->packages.Get("Hydro");
+  const bool mhd_enabled = hydro_pkg->Param<Fluid>("fluid") == Fluid::glmmhd;
+  const auto gm1 = hydro_pkg->Param<Real>("AdiabaticIndex") - 1.0;
+  const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
+  const auto nhydro = hydro_pkg->Param<int>("nhydro");
+  const auto cold_temp_threshold = shutoff_cold_temp_threshold_;
+
+  const auto &cons_pack = md->PackVariables(std::vector<std::string>{"cons"});
+  IndexRange ib = md->GetBlockData(0)->GetBoundsI(IndexDomain::interior);
+  IndexRange jb = md->GetBlockData(0)->GetBoundsJ(IndexDomain::interior);
+  IndexRange kb = md->GetBlockData(0)->GetBoundsK(IndexDomain::interior);
+
+  Kokkos::Array<Real, 2> sums{{0.0, 0.0}};
+
+  Kokkos::parallel_reduce(
+      "TabularCooling::ColdScalarAverage",
+      Kokkos::MDRangePolicy<Kokkos::Rank<4>>(
+          DevExecSpace(), {0, kb.s, jb.s, ib.s},
+          {cons_pack.GetDim(5), kb.e + 1, jb.e + 1, ib.e + 1},
+          {1, 1, 1, ib.e + 1 - ib.s}),
+      KOKKOS_LAMBDA(const int &b, const int &k, const int &j, const int &i,
+                    Real &scalar_mass_sum, Real &mass_sum) {
+        auto &cons = cons_pack(b);
+        const auto &coords = cons_pack.GetCoords(b);
+
+        const Real rho = cons(IDN, k, j, i);
+        Real internal_e =
+            cons(IEN, k, j, i) - 0.5 *
+                                     (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i)) +
+                                      SQR(cons(IM3, k, j, i))) /
+                                     rho;
+        if (mhd_enabled) {
+          internal_e -= 0.5 * (SQR(cons(IB1, k, j, i)) + SQR(cons(IB2, k, j, i)) +
+                               SQR(cons(IB3, k, j, i)));
+        }
+        internal_e /= rho;
+
+        const Real temp = internal_e * mbar_gm1_over_kb;
+        if (temp <= cold_temp_threshold) {
+          const Real cell_volume = coords.CellVolume(k, j, i);
+          scalar_mass_sum += cons(nhydro, k, j, i) * cell_volume;
+          mass_sum += rho * cell_volume;
+        }
+      },
+      Kokkos::Sum<Real>(sums[0]), Kokkos::Sum<Real>(sums[1]));
+
+#ifdef MPI_PARALLEL
+  PARTHENON_MPI_CHECK(MPI_Allreduce(MPI_IN_PLACE, sums.data(), 2, MPI_PARTHENON_REAL,
+                                    MPI_SUM, MPI_COMM_WORLD));
+#endif
+
+  const Real cold_scalar_average = (sums[1] > 0.0) ? sums[0] / sums[1] : 0.0;
+  return shutoff_tracer_threshold_ * cold_scalar_average;
+}
+
 void TabularCooling::SrcTerm(MeshData<Real> *md, const Real dt) const {
   if (integrator_ == CoolIntegrator::rk12) {
     SubcyclingFixedIntSrcTerm<RK12Stepper>(md, dt, RK12Stepper());
@@ -340,7 +407,7 @@ void TabularCooling::SubcyclingFixedIntSrcTerm(MeshData<Real> *md, const Real dt
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
-  const auto shutoff_tracer_threshold = shutoff_tracer_threshold_;
+  const auto shutoff_tracer_threshold = GetShutoffTracerThreshold(md);
 
   const unsigned int max_iter = max_iter_;
 
@@ -551,7 +618,7 @@ void TabularCooling::TownsendSrcTerm(parthenon::MeshData<parthenon::Real> *md,
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
-  const auto shutoff_tracer_threshold = shutoff_tracer_threshold_;
+  const auto shutoff_tracer_threshold = GetShutoffTracerThreshold(md);
   const Real X_by_mh2 =
       std::pow((1 - hydro_pkg->Param<Real>("He_mass_fraction")) / units.mh(), 2);
 
@@ -692,7 +759,7 @@ Real TabularCooling::EstimateTimeStep(MeshData<Real> *md) const {
   const auto mbar_gm1_over_kb = hydro_pkg->Param<Real>("mbar_over_kb") * gm1;
   const auto nhydro = hydro_pkg->Param<int>("nhydro");
   const auto shutoff_for_zero_tracer = shutoff_for_zero_tracer_;
-  const auto shutoff_tracer_threshold = shutoff_tracer_threshold_;
+  const auto shutoff_tracer_threshold = GetShutoffTracerThreshold(md);
 
   // Determine the cooling floor, whichever is higher of the cooling table floor
   // or fluid solver floor

@@ -31,5 +31,6 @@ target_sources(athenaPK PRIVATE
     wtopenrun.cpp
     stratified.cpp
     stratified_noio.cpp
+    stratified_exponential.cpp
     stratified_simple.cpp
     )

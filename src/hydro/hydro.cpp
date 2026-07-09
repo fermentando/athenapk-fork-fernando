@@ -287,12 +287,6 @@ TaskStatus ApplyInflowOnlyFluxDiode(std::shared_ptr<MeshData<Real>> &md,
     return TaskStatus::complete;
   }
 
-  // Keep reflective phase untouched when cooling/start_time is used to switch BCs.
-  if (hydro_pkg->AllParams().hasKey("cooling_start_time") &&
-      tm.time < hydro_pkg->Param<Real>("cooling_start_time")) {
-    return TaskStatus::complete;
-  }
-
   std::vector<parthenon::MetadataFlag> flags_ind({Metadata::Independent});
   auto cons_in = md->PackVariablesAndFluxes(flags_ind);
   const int nvar = cons_in.GetDim(4);
